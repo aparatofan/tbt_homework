@@ -4,8 +4,8 @@
  *
  *     php tests/test-logic.php
  *
- * class-tbt-homework-rest.php defines its class and nothing else at load time,
- * so defining ABSPATH is all it takes to pull the pure helpers in here. Every
+ * Both classes under test define a class and nothing else at load time, so
+ * defining ABSPATH is all it takes to pull the pure helpers in here. Every
  * function under test touches only its arguments.
  *
  * @package TBT_Homework
@@ -14,6 +14,7 @@
 define( 'ABSPATH', dirname( __DIR__ ) . '/' );
 
 require_once dirname( __DIR__ ) . '/includes/class-tbt-homework-rest.php';
+require_once dirname( __DIR__ ) . '/includes/class-tbt-homework-student.php';
 
 $tests_run    = 0;
 $tests_failed = 0;
@@ -149,6 +150,107 @@ tbth_assert( false, TBT_Homework_REST::is_closed( array( 'comment' => null ) ), 
 tbth_assert( true, TBT_Homework_REST::is_closed( array( 'comment' => 'Well done' ) ), 'a comment closes the row' );
 tbth_assert( true, TBT_Homework_REST::is_closed( array( 'comment' => '' ) ), 'even an empty comment closes the row' );
 tbth_assert( false, TBT_Homework_REST::is_closed( array( 'body' => 'x' ) ), 'a row with no comment column' );
+
+
+echo "\nbatching lesson ids for the brief\n";
+
+// tbt_notes_lessons_brief() is capped at 200 ids per call.
+tbth_assert( array(), TBT_Homework_Student::chunk_lesson_ids( array() ), 'no ids at all' );
+tbth_assert(
+	array( array( 1, 2, 3 ) ),
+	TBT_Homework_Student::chunk_lesson_ids( array( 1, 2, 3 ) ),
+	'a handful fits in one call'
+);
+tbth_assert(
+	1,
+	count( TBT_Homework_Student::chunk_lesson_ids( range( 1, 200 ) ) ),
+	'exactly 200 is one call'
+);
+tbth_assert(
+	2,
+	count( TBT_Homework_Student::chunk_lesson_ids( range( 1, 201 ) ) ),
+	'201 needs a second call'
+);
+tbth_assert(
+	3,
+	count( TBT_Homework_Student::chunk_lesson_ids( range( 1, 500 ) ) ),
+	'500 needs three'
+);
+tbth_assert(
+	200,
+	count( TBT_Homework_Student::chunk_lesson_ids( range( 1, 500 ) )[0] ),
+	'no batch exceeds the cap'
+);
+tbth_assert(
+	array( array( 7, 9 ) ),
+	TBT_Homework_Student::chunk_lesson_ids( array( 7, 9, 7, 9 ) ),
+	'ids are asked for once each'
+);
+tbth_assert(
+	array( array( 12 ) ),
+	TBT_Homework_Student::chunk_lesson_ids( array( '12', 0, -3, 'x', null, 12 ) ),
+	'only positive integers survive'
+);
+tbth_assert(
+	array( array( 1, 2 ), array( 3 ) ),
+	TBT_Homework_Student::chunk_lesson_ids( array( 1, 2, 3 ), 2 ),
+	'the batch size is respected'
+);
+
+echo "\nthe brief decides what appears\n";
+
+$tbth_rows = array(
+	array( 'lesson_id' => 412, 'class_id' => 12, 'body' => 'newest', 'comment' => null, 'commented_at' => null, 'submitted_at' => '2026-09-18 10:00:00' ),
+	array( 'lesson_id' => 500, 'class_id' => 99, 'body' => 'gone', 'comment' => null, 'commented_at' => null, 'submitted_at' => '2026-09-17 10:00:00' ),
+	array( 'lesson_id' => 600, 'class_id' => 12, 'body' => 'oldest', 'comment' => 'Well done', 'commented_at' => '2026-09-16 12:00:00', 'submitted_at' => '2026-09-16 10:00:00' ),
+);
+
+$tbth_brief = array(
+	412 => array( 'lesson_title' => 'Past simple', 'class_id' => 12, 'class_title' => 'Group B', 'created_at' => '2026-09-18 09:00:00' ),
+	600 => array( 'lesson_title' => 'Articles', 'class_id' => 12, 'class_title' => 'Group B', 'created_at' => '2026-09-16 09:00:00' ),
+);
+
+$tbth_entries = TBT_Homework_Student::attach_brief( $tbth_rows, $tbth_brief );
+
+// The brief omits every lesson the student may not view, so its silence is
+// the permission answer.
+tbth_assert( 2, count( $tbth_entries ), 'a lesson the brief omits does not appear' );
+tbth_assert( 412, $tbth_entries[0]['lesson_id'], 'order is preserved, newest first' );
+tbth_assert( 600, $tbth_entries[1]['lesson_id'], 'and the oldest stays last' );
+tbth_assert( 'Past simple', $tbth_entries[0]['lesson_title'], 'the lesson is named from the brief' );
+tbth_assert( 'Group B', $tbth_entries[0]['class_title'], 'the class is named from the brief' );
+tbth_assert( 'waiting', $tbth_entries[0]['status'], 'no comment yet means waiting' );
+tbth_assert( 'commented', $tbth_entries[1]['status'], 'a comment means commented' );
+tbth_assert( null, $tbth_entries[0]['comment'], 'no comment comes back as null' );
+tbth_assert( 'Well done', $tbth_entries[1]['comment'], "the teacher's comment is carried through" );
+tbth_assert( null, $tbth_entries[0]['commented_at'], 'an empty comment date is null' );
+tbth_assert( 'newest', $tbth_entries[0]['body'], 'the body is carried through untouched' );
+tbth_assert( array(), TBT_Homework_Student::attach_brief( array(), $tbth_brief ), 'no rows, no entries' );
+tbth_assert(
+	array(),
+	TBT_Homework_Student::attach_brief( $tbth_rows, array() ),
+	'an empty brief hides everything'
+);
+tbth_assert(
+	0,
+	count( TBT_Homework_Student::attach_brief( array( array( 'lesson_id' => 0 ) ), $tbth_brief ) ),
+	'a row with no lesson id is dropped'
+);
+tbth_assert(
+	'',
+	TBT_Homework_Student::attach_brief(
+		array( array( 'lesson_id' => 412, 'body' => 'x' ) ),
+		array( 412 => array( 'lesson_title' => 'Past simple' ) )
+	)[0]['class_title'],
+	'a brief entry with no class title yields an empty one, not a notice'
+);
+
+echo "\nstatus, on its own\n";
+
+tbth_assert( 'waiting', TBT_Homework_Student::status_for( array( 'comment' => null ) ), 'a null comment is waiting' );
+tbth_assert( 'waiting', TBT_Homework_Student::status_for( array( 'body' => 'x' ) ), 'no comment column is waiting' );
+tbth_assert( 'commented', TBT_Homework_Student::status_for( array( 'comment' => 'Nice' ) ), 'a comment is commented' );
+tbth_assert( 'commented', TBT_Homework_Student::status_for( array( 'comment' => '' ) ), 'even an empty comment is commented' );
 
 echo "\n";
 

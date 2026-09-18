@@ -255,9 +255,13 @@ class TBT_Homework_REST {
 	 * Sunday in Warsaw does not show as Monday. The year is dropped when it is
 	 * the current one.
 	 *
+	 * Public because it is the one place a stored datetime becomes a display
+	 * string: the library page formats its dates through here too, so the two
+	 * screens can never drift apart.
+	 *
 	 * @param string $mysql_utc A 'Y-m-d H:i:s' string in UTC.
 	 */
-	private static function display_date( string $mysql_utc ): string {
+	public static function display_date( string $mysql_utc ): string {
 		$timestamp = strtotime( $mysql_utc . ' +0000' );
 		if ( ! $timestamp ) {
 			return '';
