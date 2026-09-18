@@ -1,0 +1,31 @@
+name: Deploy
+
+# Manual trigger only. Nothing deploys on push.
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy over FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT }}
+          protocol: ftps
+          server-dir: /tbt-homework/
+          log-level: verbose
+          exclude: |
+            **/.git*
+            **/.git*/**
+            node_modules/**
+            **/*.md
+            docs/**
+            tests/**
