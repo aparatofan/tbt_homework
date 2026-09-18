@@ -1,0 +1,206 @@
+/**
+ * TBT Homework — the teacher's queue.
+ *
+ * The count, the cards and the pager. The Admin Bar above them comes from
+ * tbt-homework-library.css, which the student's library reads from as well, so
+ * the search on this page starts exactly where it starts on that one.
+ *
+ * Shared primitives do the work where they exist: .tbt-card for a submission,
+ * .tbt-tag for a status, .tbth-textarea for the comment box, .tbth-btn for the
+ * button. Colours come from the Hub tokens and none is redefined here; the
+ * literals inside var() are fallbacks for a page without tbt-components, not
+ * second definitions.
+ */
+
+/* --------------------------------------------------------------------------
+   The count — a genuine pill, which is what the radius rule reserves the
+   shape for: TBT Blue, white text, fully rounded. Its own class, not a
+   restyled .tbt-tag.
+   -------------------------------------------------------------------------- */
+
+.tbth-count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 24px;
+	height: 24px;
+	margin-left: 10px;
+	padding: 0 9px;
+	box-sizing: border-box;
+	font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-size: 13px;
+	font-weight: 700;
+	line-height: 1;
+	color: var(--tbt-white, #FFFFFF);
+	background: var(--tbt-blue, #0856C9);
+	border-radius: 999px;
+}
+
+/* --------------------------------------------------------------------------
+   The summary line — "4 of 37 · Clear filters", with the same 24px under it
+   that the bar has under itself
+   -------------------------------------------------------------------------- */
+
+.tbth-summary {
+	margin: 0 0 24px;
+	font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-size: 14px;
+	line-height: 1.5;
+	color: var(--tbt-text-muted, #667085);
+}
+
+.tbth-summary__clear {
+	color: var(--tbt-blue, #0856C9);
+}
+
+/* --------------------------------------------------------------------------
+   The queue
+   -------------------------------------------------------------------------- */
+
+.tbth-queue {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* .tbt-card owns the surface; only what is specific to a submission is here. */
+.tbth-item {
+	min-width: 0;
+}
+
+.tbth-item__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 10px;
+	margin-bottom: 4px;
+}
+
+/*
+ * The student's name is the strongest thing on the card — you scan this page
+ * for people, not for lessons. Pinned on the app's own id for the same reason
+ * the bar's heading is: Divi uppercases headings from ID-scoped selectors.
+ */
+#tbth-homework-teacher .tbth-item__student {
+	margin: 0;
+	padding: 0;
+	min-width: 0;
+	font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-size: 18px;
+	font-weight: 700;
+	line-height: 1.3;
+	letter-spacing: normal;
+	text-transform: none;
+	color: var(--tbt-text, #101828);
+}
+
+.tbth-item__status {
+	flex: 0 0 auto;
+	white-space: nowrap;
+}
+
+.tbth-item__status--waiting {
+	color: var(--tbt-text-muted, #667085);
+	background: var(--tbt-surface-soft, #F0F5FE);
+}
+
+.tbth-item__status--commented {
+	color: var(--tbt-blue, #0856C9);
+	background: var(--tbt-surface-blue, #EDF4FF);
+}
+
+/* The submission is the student's writing, so it takes the content face. */
+.tbth-item__body {
+	margin-top: 12px;
+}
+
+/*
+ * Collapsed past about eight lines: compositions run long and you want to see
+ * five people at once. 8 lines at the body's 1.6 line-height is 12.8em, and
+ * the class is added by the script — without it the whole submission is on the
+ * page, which is what a teacher reading with no JavaScript should get.
+ */
+.tbth-item__body--clipped {
+	max-height: 12.8em;
+	overflow: hidden;
+}
+
+.tbth-item__more {
+	margin-top: 8px;
+	padding: 0;
+	font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 1.5;
+	color: var(--tbt-blue, #0856C9);
+	background: none;
+	border: 0;
+	cursor: pointer;
+}
+
+/* --------------------------------------------------------------------------
+   The comment box — Roboto Slab, because a student will read this as part of
+   their learning, not as an interface label
+   -------------------------------------------------------------------------- */
+
+.tbth-item__comment {
+	margin-top: 16px;
+	padding-top: 16px;
+	border-top: 1px solid var(--tbt-border, #D8E3F0);
+}
+
+.tbth-item__label {
+	display: block;
+	margin-bottom: 8px;
+	font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 1.5;
+	color: var(--tbt-text, #101828);
+}
+
+/* .tbth-textarea carries the type and the surface; only the height differs. */
+.tbth-item__box {
+	min-height: 96px;
+}
+
+.tbth-item__comment .tbth-error {
+	margin: 12px 0 0;
+}
+
+/* --------------------------------------------------------------------------
+   The pager — plain older and newer links
+   -------------------------------------------------------------------------- */
+
+.tbth-pager {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	margin-top: 24px;
+	font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-size: 14px;
+	line-height: 1.5;
+}
+
+.tbth-pager__link {
+	font-weight: 600;
+	color: var(--tbt-blue, #0856C9);
+}
+
+.tbth-pager__where {
+	color: var(--tbt-text-muted, #667085);
+}
+
+/* --------------------------------------------------------------------------
+   Reflow — 580px. The bar reflows in the library sheet.
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 580px) {
+	.tbth-item__head {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+}
