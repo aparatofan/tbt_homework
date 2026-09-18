@@ -104,9 +104,11 @@ class TBT_Homework_Student {
 	 * Enqueue the page's assets.
 	 *
 	 * The shared sheet carries the card, the body type and the comment block,
-	 * all of which this page reuses; the student sheet adds the bar and the
-	 * list. Neither hangs on the TBT Notes asset hook, because this page is
-	 * not a lesson page and Notes may not be on it at all.
+	 * all of which this page reuses; the library sheet carries the Admin Bar,
+	 * which the teacher's page reads from the same file rather than from a
+	 * second copy of it; the student sheet adds the list. None of them hangs
+	 * on the TBT Notes asset hook, because this page is not a lesson page and
+	 * Notes may not be on it at all.
 	 */
 	private static function enqueue(): void {
 		wp_enqueue_style(
@@ -117,9 +119,16 @@ class TBT_Homework_Student {
 		);
 
 		wp_enqueue_style(
+			'tbt-homework-library',
+			TBT_HOMEWORK_URL . 'assets/css/tbt-homework-library.css',
+			array( 'tbt-components', 'tbt-homework' ),
+			TBT_HOMEWORK_VERSION
+		);
+
+		wp_enqueue_style(
 			'tbt-homework-student',
 			TBT_HOMEWORK_URL . 'assets/css/tbt-homework-student.css',
-			array( 'tbt-components', 'tbt-homework' ),
+			array( 'tbt-components', 'tbt-homework', 'tbt-homework-library' ),
 			TBT_HOMEWORK_VERSION
 		);
 

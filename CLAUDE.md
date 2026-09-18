@@ -62,6 +62,10 @@ contains no bar. Each plugin carries its **own prefixed copy** — Notes has
 `__heading`, `__line`, `__search`, `__filter`. Same shape, own prefix: sharing
 one set of class names is what caused the Notes/Swipe clash.
 
+One prefixed copy, not one per page: `assets/css/tbt-homework-library.css` holds
+the bar and both library pages read it, so the student's and the teacher's
+cannot drift apart. The Divi pin is anchored on both app ids.
+
 Use the shared primitives where they exist — the search field is `.tbt-input`,
 the dropdown is `.tbt-select` — and take colours from the Hub tokens without
 defining local near-duplicates. The geometry is ours: 10px gaps, a 234px
@@ -84,9 +88,14 @@ Two things to keep copying from Notes:
   class name from another tool's stylesheet.
 - `class-tbt-homework-db.php` owns every query. No other file writes SQL.
 - The form under a note is REST-driven, because it mounts into a slot Notes
-  renders. The library page is rendered server-side by the shortcode and its
-  script only filters what is already there — a student without JavaScript
-  still reads their whole library.
+  renders. The library pages are rendered server-side by their shortcodes. The
+  student's script only filters what is already there — a student without
+  JavaScript still reads their whole library. The teacher's queue is paged at
+  25, so filtering in the browser would search only the rows in hand: there the
+  search, the filter and the page are query parameters, and JavaScript is
+  needed for saving a comment and nothing else.
+- The teacher's queue is bounded by `class_id IN ( tbt_notes_class_ids_for_manager() )`
+  and by nothing else. An empty array is the whole of "not a teacher".
 - Bodies are plain text: `sanitize_textarea_field()` in, `esc_html()` plus
   `nl2br()` out, in both PHP and JS. No rich text, no pasted markup.
 - Times are stored in UTC via `current_time( 'mysql', true )` and displayed

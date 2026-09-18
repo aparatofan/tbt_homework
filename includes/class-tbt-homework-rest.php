@@ -1,6 +1,6 @@
 <?php
 /**
- * The two routes, and the pure validation logic behind them.
+ * The routes, and the pure validation logic behind them.
  *
  * The decision helpers at the bottom of this class touch nothing outside their
  * arguments, which is what lets tests/test-logic.php run them under plain PHP
@@ -12,7 +12,7 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
- * GET and POST for the caller's own homework.
+ * The student's own homework, and the teacher's queue over it.
  */
 class TBT_Homework_REST {
 
@@ -27,6 +27,14 @@ class TBT_Homework_REST {
 	const BODY_MAX = 20000;
 
 	/**
+	 * Maximum length of a teacher's comment, in characters.
+	 *
+	 * The same cap as a submission, written separately because it answers a
+	 * different question and may one day want a different answer.
+	 */
+	const COMMENT_MAX = 20000;
+
+	/**
 	 * Register the routes.
 	 */
 	public static function init(): void {
@@ -34,11 +42,12 @@ class TBT_Homework_REST {
 	}
 
 	/**
-	 * Two routes on one path, both about the caller's own work.
+	 * Two routes for the student, two for the teacher.
 	 *
 	 * permission_callback is is_user_logged_in and nothing more. Being logged
-	 * in says nothing about which class you are in, so authorisation happens
-	 * per lesson inside the callbacks, in the order the spec sets out.
+	 * in says nothing about which class you are in, nor which classes you
+	 * manage, so authorisation happens inside the callbacks, in the order the
+	 * spec sets out.
 	 *
 	 * No 'args' schema is declared on purpose: WordPress would reject a bad
 	 * lesson_id with its own 400 before the callback ran, and a missing TBT
@@ -57,6 +66,33 @@ class TBT_Homework_REST {
 				array(
 					'methods'             => WP_REST_Server::CREATABLE,
 					'callback'            => array( __CLASS__, 'handle_post' ),
+					'permission_callback' => 'is_user_logged_in',
+				),
+			)
+		);
+
+		// The teacher's two. Same permission_callback, same reasoning: being
+		// logged in says nothing about which classes you manage, so the scope
+		// is resolved inside the callbacks and nothing else is trusted.
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/queue',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( __CLASS__, 'handle_queue' ),
+					'permission_callback' => 'is_user_logged_in',
+				),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/comment',
+			array(
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( __CLASS__, 'handle_comment' ),
 					'permission_callback' => 'is_user_logged_in',
 				),
 			)
@@ -152,6 +188,210 @@ class TBT_Homework_REST {
 	}
 
 	/**
+	 * GET /queue?status=waiting&search=ania&page=1
+	 *
+	 * Everything the teacher's students have sent, waiting ones first. The
+	 * page is rendered server-side by the shortcode, so nothing in the plugin
+	 * calls this route; it exists because the queue is a real resource, and
+	 * because it has to answer 403 to a student who tries it by hand.
+	 *
+	 * @param WP_REST_Request $request The request.
+	 *
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function handle_queue( $request ) {
+		$class_ids = self::manager_scope();
+		if ( is_wp_error( $class_ids ) ) {
+			return $class_ids;
+		}
+
+		$page = TBT_Homework_Teacher::page( $class_ids, array(
+			'filter' => TBT_Homework_Teacher::normalise_filter( $request->get_param( 'status' ) ),
+			'search' => TBT_Homework_Teacher::normalise_search( $request->get_param( 'search' ) ),
+			'page'   => TBT_Homework_Teacher::normalise_page( $request->get_param( 'page' ) ),
+		) );
+
+		$entries = array();
+		foreach ( $page['entries'] as $entry ) {
+			$entries[] = self::present_entry( $entry );
+		}
+
+		return rest_ensure_response(
+			array(
+				'entries'  => $entries,
+				'waiting'  => $page['waiting'],
+				'total'    => $page['total'],
+				'matched'  => $page['matched'],
+				'page'     => $page['page'],
+				'pages'    => $page['pages'],
+				'per_page' => TBT_Homework_Teacher::PER_PAGE,
+			)
+		);
+	}
+
+	/**
+	 * POST /comment { id, comment }
+	 *
+	 * Validation, first failure wins, in the order the spec sets out. Step 3
+	 * is the one that matters: the row's own class_id is tested against the
+	 * classes this caller manages, so one teacher can never reach another's
+	 * students. It is done against the row in the database, never against
+	 * anything the browser sent.
+	 *
+	 * @param WP_REST_Request $request The request.
+	 *
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function handle_comment( $request ) {
+		// 1. TBT Notes missing — checked here, at the point of use.
+		if ( ! function_exists( 'tbt_notes_class_ids_for_manager' ) ) {
+			return self::unavailable();
+		}
+
+		// 2. A positive integer, and a row that exists.
+		$raw = $request->get_param( 'id' );
+		$row = self::is_valid_id( $raw ) ? TBT_Homework_DB::get_row( (int) $raw ) : null;
+
+		if ( null === $row ) {
+			return new WP_Error(
+				'tbt_homework_no_submission',
+				__( 'That homework does not exist.', 'tbt-homework' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		// 3. The scope check, against the stored row.
+		$class_ids = TBT_Homework_DB::positive_ids( (array) tbt_notes_class_ids_for_manager() );
+
+		if ( ! TBT_Homework_Teacher::in_scope( (int) $row['class_id'], $class_ids ) ) {
+			return new WP_Error(
+				'tbt_homework_not_your_class',
+				__( 'That homework is not from one of your classes.', 'tbt-homework' ),
+				array( 'status' => 403 )
+			);
+		}
+
+		// 4 and 5. Plain text in, and an empty save clears the comment.
+		$comment = trim( sanitize_textarea_field( (string) $request->get_param( 'comment' ) ) );
+		$verdict = self::check_comment( $comment );
+
+		if ( 'too_long' === $verdict ) {
+			return new WP_Error(
+				'tbt_homework_comment_too_long',
+				sprintf(
+					/* translators: %s: maximum number of characters. */
+					__( 'A comment can be at most %s characters long.', 'tbt-homework' ),
+					number_format_i18n( self::COMMENT_MAX )
+				),
+				array( 'status' => 400 )
+			);
+		}
+
+		// 6. Write. Clearing sets both the comment and its date to NULL, which
+		// returns the row to waiting and lets the student edit again.
+		$saved = TBT_Homework_DB::save_comment( (int) $row['id'], 'clear' === $verdict ? null : $comment );
+
+		if ( null === $saved ) {
+			return new WP_Error(
+				'tbt_homework_comment_not_saved',
+				__( 'Your comment could not be saved. Please try again.', 'tbt-homework' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		return rest_ensure_response( self::present_saved_comment( $saved ) );
+	}
+
+	/**
+	 * The classes this caller manages, or the error that stops them.
+	 *
+	 * tbt_notes_class_ids_for_manager() returns the classes you teach, every
+	 * class for an administrator, and an empty array for everyone else — so an
+	 * empty array is the whole of "not a teacher", and no role or capability
+	 * is re-derived here.
+	 *
+	 * @return array|WP_Error
+	 */
+	private static function manager_scope() {
+		if ( ! function_exists( 'tbt_notes_class_ids_for_manager' ) || ! function_exists( 'tbt_notes_lessons_brief' ) ) {
+			return self::unavailable();
+		}
+
+		$class_ids = TBT_Homework_DB::positive_ids( (array) tbt_notes_class_ids_for_manager() );
+
+		if ( ! $class_ids ) {
+			return new WP_Error(
+				'tbt_homework_not_a_teacher',
+				__( 'This is for teachers. There is nothing here to check.', 'tbt-homework' ),
+				array( 'status' => 403 )
+			);
+		}
+
+		return $class_ids;
+	}
+
+	/**
+	 * The 503 every route answers when TBT Notes is not active.
+	 */
+	private static function unavailable(): WP_Error {
+		return new WP_Error(
+			'tbt_homework_unavailable',
+			__( 'Homework is unavailable right now because TBT Notes is not active. Nothing already submitted has been lost.', 'tbt-homework' ),
+			array( 'status' => 503 )
+		);
+	}
+
+	/**
+	 * One queue entry, shaped for the wire.
+	 *
+	 * Plain text out, escaped exactly as the submission body is: esc_html()
+	 * plus nl2br(), so pasted markup is text on this route too.
+	 *
+	 * @param array $entry A shaped entry from the teacher's page.
+	 */
+	private static function present_entry( array $entry ): array {
+		$comment = $entry['comment'];
+
+		return array(
+			'id'                   => (int) $entry['id'],
+			'student'              => (string) $entry['student'],
+			'lesson_title'         => (string) $entry['lesson_title'],
+			'class_title'          => (string) $entry['class_title'],
+			'body'                 => (string) $entry['body'],
+			'body_html'            => nl2br( esc_html( (string) $entry['body'] ) ),
+			'status'               => (string) $entry['status'],
+			'submitted_at'         => (string) $entry['submitted_at'],
+			'submitted_at_display' => self::display_date( (string) $entry['submitted_at'] ),
+			'comment'              => $comment,
+			'comment_html'         => null === $comment ? null : nl2br( esc_html( $comment ) ),
+			'commented_at'         => $entry['commented_at'],
+			'commented_at_display' => null === $entry['commented_at'] ? null : self::display_date( (string) $entry['commented_at'] ),
+		);
+	}
+
+	/**
+	 * What the card needs after a comment is saved or cleared.
+	 *
+	 * The status is what the script adjusts the waiting count from, so it is
+	 * the one field the card cannot work out for itself.
+	 *
+	 * @param array $row The stored row.
+	 */
+	private static function present_saved_comment( array $row ): array {
+		$comment = isset( $row['comment'] ) && null !== $row['comment'] ? (string) $row['comment'] : null;
+
+		return array(
+			'id'                   => (int) $row['id'],
+			'status'               => null === $comment ? 'waiting' : 'commented',
+			'comment'              => $comment,
+			'comment_html'         => null === $comment ? null : nl2br( esc_html( $comment ) ),
+			'commented_at'         => empty( $row['commented_at'] ) ? null : (string) $row['commented_at'],
+			'commented_at_display' => empty( $row['commented_at'] ) ? null : self::display_date( (string) $row['commented_at'] ),
+			'updated_at'           => (string) $row['updated_at'],
+		);
+	}
+
+	/**
 	 * Steps 1 to 5 of the validation order, first failure wins.
 	 *
 	 * @param mixed  $raw_lesson_id The lesson_id as it arrived.
@@ -162,11 +402,7 @@ class TBT_Homework_REST {
 	private static function resolve_context( $raw_lesson_id, string $intent ) {
 		// 1. TBT Notes missing — checked here, at the point of use.
 		if ( ! function_exists( 'tbt_notes_lesson_context' ) ) {
-			return new WP_Error(
-				'tbt_homework_unavailable',
-				__( 'Homework is unavailable right now because TBT Notes is not active. Nothing already submitted has been lost.', 'tbt-homework' ),
-				array( 'status' => 503 )
-			);
+			return self::unavailable();
 		}
 
 		// 2. lesson_id must be a positive integer.
@@ -282,12 +518,22 @@ class TBT_Homework_REST {
 	/**
 	 * Is this a usable lesson id?
 	 *
-	 * A positive integer, or a string of digits that is one. Anything else —
-	 * zero, negative, a float, "12abc", an array, null — is not.
-	 *
 	 * @param mixed $raw The value as it arrived.
 	 */
 	public static function is_valid_lesson_id( $raw ): bool {
+		return self::is_valid_id( $raw );
+	}
+
+	/**
+	 * Is this a usable row id?
+	 *
+	 * A positive integer, or a string of digits that is one. Anything else —
+	 * zero, negative, a float, "12abc", an array, null — is not. Lesson ids
+	 * and submission ids answer to the same rule, and there is one copy of it.
+	 *
+	 * @param mixed $raw The value as it arrived.
+	 */
+	public static function is_valid_id( $raw ): bool {
 		if ( is_bool( $raw ) || is_array( $raw ) || is_object( $raw ) || null === $raw ) {
 			return false;
 		}
@@ -326,6 +572,32 @@ class TBT_Homework_REST {
 		}
 
 		if ( self::length( $body ) > self::BODY_MAX ) {
+			return 'too_long';
+		}
+
+		return 'ok';
+	}
+
+	/**
+	 * The comment's own rule: empty means clear it.
+	 *
+	 * Takes text that has already been through sanitize_textarea_field(). An
+	 * empty save is not an error — it is how a comment saved on the wrong card
+	 * is undone, which is the only way back from a one-way door for the
+	 * student.
+	 *
+	 * @param string $comment Sanitised text.
+	 *
+	 * @return string 'ok', 'clear' or 'too_long'.
+	 */
+	public static function check_comment( string $comment ): string {
+		$comment = trim( $comment );
+
+		if ( '' === $comment ) {
+			return 'clear';
+		}
+
+		if ( self::length( $comment ) > self::COMMENT_MAX ) {
 			return 'too_long';
 		}
 
