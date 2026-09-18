@@ -122,5 +122,26 @@ nothing to migrate.
 
 ## Deployment
 
-`.github/workflows/deploy.yml` deploys over FTPS to `/tbt-homework/`, on manual
-trigger only. Nothing deploys on push.
+`.github/workflows/deploy.yml` deploys over FTPS to `/tbt-homework/`. A version
+tag is what makes a commit a release:
+
+```
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+An ordinary push to a branch deploys nothing. The manual trigger — Actions →
+Deploy → Run workflow — is still there for redeploying without cutting a new
+tag.
+
+Before copying anything, the workflow checks the tag against both places the
+version is written, the plugin header and `TBT_HOMEWORK_VERSION`. If the three
+disagree it fails without deploying, so a tag can never quietly put the wrong
+version live.
+
+FTP sync copies files; it does not run WordPress activation. That only matters
+for a release that changes the schema — bump `TBT_HOMEWORK_DB_VERSION` and give
+it a migration path rather than relying on the activation hook.
+
+For a hand install instead, zip the plugin folder without `tests/`, `docs/`,
+`.github/` and the `.md` files — the same exclusions the workflow uses — and
+upload it under Plugins → Add New → Upload Plugin.
