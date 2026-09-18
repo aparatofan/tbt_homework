@@ -166,13 +166,19 @@ class TBT_Homework_Student {
 	 * The Admin Bar.
 	 *
 	 * Every library opens with this same one-row bar, a teacher's or a
-	 * student's. Three slots differ here and each difference is real: the
-	 * title reads "Your homework", the dropdown filters by status, and there
-	 * is no button, because a student creates homework under a lesson note
-	 * and there is nowhere for a button to go. The is-empty modifier records
-	 * that absent button, and the line runs on into the space it would have
-	 * taken — the line is the same flexible rule either way, not a special
-	 * case.
+	 * student's: the title and its line, then the filter group — the search,
+	 * a line, the dropdown — then the line that runs to the end of the row.
+	 * Two slots differ here and each difference is real: the title reads
+	 * "Your homework", and the dropdown filters by status.
+	 *
+	 * There is no button, because a student creates homework under a lesson
+	 * note and there is nowhere for a button to go. Nothing records that: the
+	 * end line simply runs on into the space a button would have taken, which
+	 * is what a line whose whole job is to take what is left already does.
+	 *
+	 * The is-empty modifier is a different case — an empty library, with no
+	 * search and no dropdown, where the title's line is the only one left and
+	 * the end line would double up behind it.
 	 *
 	 * The title zone holds its 234px minimum so the search begins 244px in,
 	 * where a student finds it on any other library page.
@@ -182,29 +188,35 @@ class TBT_Homework_Student {
 	 * @param bool $has_entries Whether there is anything to search.
 	 */
 	private static function bar( bool $has_entries ): string {
-		$html  = '<div class="tbth-libbar tbth-libbar--is-empty">';
+		$html  = sprintf(
+			'<div class="tbth-libbar%s">',
+			$has_entries ? '' : ' tbth-libbar--is-empty'
+		);
 		$html .= '<div class="tbth-libbar__title">';
 		$html .= '<h2 class="tbth-libbar__heading">' . esc_html__( 'Your homework', 'tbt-homework' ) . '</h2>';
+		$html .= TBT_Homework_Bar::line();
 		$html .= '</div>';
 
 		if ( $has_entries ) {
-			$html .= sprintf(
-				'<input type="search" class="tbt-input tbth-libbar__search" data-tbth-search placeholder="%s" aria-label="%s" autocomplete="off">',
-				esc_attr__( 'Search your homework', 'tbt-homework' ),
-				esc_attr__( 'Search your homework', 'tbt-homework' )
-			);
+			$html .= '<div class="tbth-libbar__filter" role="search">';
+
+			$html .= TBT_Homework_Bar::search_field( __( 'Search your homework', 'tbt-homework' ) );
+
+			$html .= TBT_Homework_Bar::line();
 
 			$html .= sprintf(
-				'<select class="tbt-select tbth-libbar__filter" data-tbth-filter aria-label="%s">',
+				'<select class="tbt-select tbth-libbar__select" data-tbth-filter aria-label="%s">',
 				esc_attr__( 'Filter homework by status', 'tbt-homework' )
 			);
 			$html .= '<option value="all">' . esc_html__( 'All', 'tbt-homework' ) . '</option>';
 			$html .= '<option value="waiting">' . esc_html__( 'Waiting for comment', 'tbt-homework' ) . '</option>';
 			$html .= '<option value="commented">' . esc_html__( 'Commented', 'tbt-homework' ) . '</option>';
 			$html .= '</select>';
+
+			$html .= '</div>';
 		}
 
-		$html .= '<span class="tbth-libbar__line" aria-hidden="true"></span>';
+		$html .= TBT_Homework_Bar::line( true );
 		$html .= '</div>';
 
 		return $html;
@@ -216,7 +228,7 @@ class TBT_Homework_Student {
 	 * @param array $entries Shaped entries.
 	 */
 	private static function list_markup( array $entries ): string {
-		$html = '<ul class="tbth-entries" data-tbth-entries>';
+		$html = '<ul class="tbth-list tbth-entries" data-tbth-entries>';
 
 		foreach ( $entries as $entry ) {
 			$html .= self::entry_markup( $entry );

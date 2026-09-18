@@ -15,7 +15,8 @@
 /* --------------------------------------------------------------------------
    The count — a genuine pill, which is what the radius rule reserves the
    shape for: TBT Blue, white text, fully rounded. Its own class, not a
-   restyled .tbt-tag.
+   restyled .tbt-tag. The 10px between it and the title is the title zone's
+   own gap, so it is not set twice here.
    -------------------------------------------------------------------------- */
 
 .tbth-count {
@@ -24,7 +25,6 @@
 	justify-content: center;
 	min-width: 24px;
 	height: 24px;
-	margin-left: 10px;
 	padding: 0 9px;
 	box-sizing: border-box;
 	font-family: Roboto, "Helvetica Neue", Arial, sans-serif;

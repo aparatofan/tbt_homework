@@ -3,7 +3,7 @@ Contributors: tbt
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.3.0
+Stable tag: 0.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -76,6 +76,18 @@ checks the stored row's own class before writing anything.
 Deleting drops the table and its options. Deactivating keeps everything.
 
 == Changelog ==
+
+= 0.3.1 =
+* Fixed: the Admin Bar's search and dropdown drew at around 540px instead of
+  300px on both library pages. The shared primitives set their own width and a
+  flex basis on the wrapper lost to them; the widths are pinned one class
+  deeper now.
+* The bar's heading is TBT Blue Roboto Slab 28px, the search has a magnifier
+  and a × that clears it, and the three lines share what is left of the row
+  equally.
+* New: a spine down the left edge of every card — TBT Blue while a piece of
+  homework is waiting for a comment, muted grey once it has one, on both pages.
+* Fixed: the theme's bullets no longer appear beside the cards.
 
 = 0.3.0 =
 * New: `[tbt_homework_teacher]`, the teacher's queue, with the waiting count,

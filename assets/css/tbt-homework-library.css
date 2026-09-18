@@ -1,17 +1,25 @@
 /**
- * TBT Homework — the Admin Bar, and the quiet lines under it.
+ * TBT Homework — the Admin Bar, and the cards under it.
  *
  * One copy, read by both library pages: the student's own work and the
  * teacher's queue. Section 13 requires each plugin to carry its own prefixed
  * copy of the bar rather than share one set of class names with another tool —
  * that is the lesson the Notes/Swipe clash taught — but it does not ask one
  * plugin to write the same bar twice. This is that copy, under tbth-, the same
- * shape as tbt-notes-libbar__*.
+ * shape as tbt-notes-libbar__*. The card rules are here for the same reason: a
+ * spine that meant one thing on the student's page and another on the
+ * teacher's would be worse than drawing no spine at all.
  *
- * Shared primitives do the work where they exist: .tbt-input for the search,
- * .tbt-select for the dropdown. Colours come from the Hub tokens and none is
- * redefined here; the literals inside var() are fallbacks for a page without
- * tbt-components, not second definitions.
+ * Shared primitives draw the controls: .tbt-input for the search, .tbt-select
+ * for the dropdown. They also set their own width, and the theme sets more on
+ * top, and both beat a flex basis declared on a wrapper — which is why the
+ * search and the dropdown came out around 540px rather than 300px. So the
+ * widths are pinned here, one class deeper than the primitive, exactly as
+ * tbt-students does it. That is the fix this file exists for.
+ *
+ * Colours come from the Hub tokens and none is redefined here; the literals
+ * inside var() are fallbacks for a page without tbt-components, not second
+ * definitions.
  *
  * Geometry: 10px gaps, a 234px minimum title zone so the search starts 244px
  * in, a 300px search, a 300px dropdown, 24px below the bar, and the reflow at
@@ -24,6 +32,7 @@
 
 .tbth-libbar {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 10px;
 	margin: 0 0 24px;
@@ -37,46 +46,157 @@
 .tbth-libbar__title {
 	display: flex;
 	align-items: center;
+	gap: 10px;
 	flex: 0 0 auto;
 	min-width: 234px;
 }
 
 /*
- * The line is one flexible rule that takes whatever the row has left. On a
- * bar with a button that is the run up to it; on both of ours the is-empty
- * modifier records that there is no button — a student writes homework under a
- * lesson note, and a teacher does not create homework at all — and the same
- * rule runs on to the end of the row. Nothing about the line is special-cased.
+ * Three lines, not one: after the title, between the search and the dropdown,
+ * and from the dropdown to the end of the row. Every one of them is decorative
+ * and aria-hidden.
  *
- * With nothing in the library there is no search and no filter either, and the
- * line runs from the title to the end of the row.
+ * The filter group grows by the same share as the end line, and inside the
+ * group the only thing that can grow is the middle line — so the gap after the
+ * search and the gap after the dropdown come out equal. That equality is the
+ * whole reason the bar reads as one joined row.
  *
- * The is-empty modifier needs no declaration of its own: it marks the missing
- * button in the markup, the way the Notes bar does, and the line already takes
- * whatever the row has left.
+ * Neither of our bars has a button — a student writes homework under a lesson
+ * note, and a teacher does not create homework at all — so the end line simply
+ * runs on to the end of the row. Nothing about the line is special-cased.
  */
 .tbth-libbar__line {
-	flex: 1 1 auto;
+	flex: 1 1 0;
 	min-width: 0;
 	height: 1px;
 	background: var(--tbt-border, #D8E3F0);
 }
 
-.tbth-libbar__search,
 .tbth-libbar__filter {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+/* The 300px the icon and the × are positioned inside. */
+.tbth-libbar__search {
+	position: relative;
 	flex: 0 0 300px;
-	width: 300px;
 	min-width: 0;
 }
 
 /*
- * A filter turns blue when it is set, as filters do. On the teacher's queue
- * that includes the default, because Waiting genuinely narrows the list: blue
- * on load is the truth there, not a bug.
+ * An empty library has nothing to search and nothing to filter, so neither
+ * control is on the page. The title's own line is then the only one left and
+ * runs to the end of the row; the end line would double up behind it.
+ *
+ * This is the empty library, not the missing button — the two were one note
+ * once, and they are not the same case.
  */
-.tbth-libbar__filter.tbth-is-set {
+.tbth-libbar--is-empty .tbth-libbar__title {
+	flex: 1 1 auto;
+}
+
+.tbth-libbar--is-empty .tbth-libbar__line--end {
+	display: none;
+}
+
+/* --------------------------------------------------------------------------
+   The search field — icon left, × right, both inside the 300px
+   -------------------------------------------------------------------------- */
+
+.tbth-libbar__icon {
+	position: absolute;
+	left: 16px;
+	top: 50%;
+	transform: translateY(-50%);
 	color: var(--tbt-blue, #0856C9);
-	border-color: var(--tbt-blue, #0856C9);
+	pointer-events: none;
+}
+
+/*
+ * .tbt-input pins its own width and padding, and the theme pins more, so this
+ * pins too — one class deeper, which is where the !important earns its place.
+ * The field fills the 300px wrapper, and its padding makes room for the icon
+ * and the ×.
+ */
+.tbth-student .tbth-libbar__input,
+.tbth-teacher .tbth-libbar__input {
+	display: block !important;
+	width: 100% !important;
+	max-width: 100% !important;
+	min-width: 0 !important;
+	padding-left: 46px !important;
+	padding-right: 44px !important;
+}
+
+.tbth-libbar__clear {
+	position: absolute;
+	right: 8px;
+	top: 50%;
+	transform: translateY(-50%);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-size: 20px;
+	line-height: 1;
+	color: var(--tbt-text-muted, #667085);
+	background: transparent;
+	border: 0;
+	border-radius: 8px;
+	cursor: pointer;
+}
+
+/*
+ * The × is there only while there is something to clear, and the rule above
+ * sets a display, which would outrank the browser's [hidden] rule.
+ */
+.tbth-libbar__clear[hidden] {
+	display: none;
+}
+
+.tbth-libbar__clear:hover {
+	color: var(--tbt-blue, #0856C9);
+	background: var(--tbt-surface-blue, #EDF4FF);
+}
+
+.tbth-libbar__clear:focus-visible {
+	outline: 3px solid rgba(8, 86, 201, 0.35);
+	outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   The dropdown
+   -------------------------------------------------------------------------- */
+
+/* Pinned the same way, one class deeper, and for the same reason. */
+.tbth-student .tbth-libbar__select,
+.tbth-teacher .tbth-libbar__select {
+	display: block !important;
+	flex: 0 0 300px;
+	width: 300px !important;
+	max-width: 100% !important;
+	min-width: 0;
+}
+
+/*
+ * A filter turns blue when it is set, as filters do — blue means something is
+ * hidden. On the teacher's queue that includes the default, because Waiting
+ * genuinely narrows the list: blue on load is the truth there, not a bug.
+ *
+ * It rides the same pin as the width: the primitive and the theme both colour
+ * this control, and a state that loses to them is not a state.
+ */
+.tbth-student .tbth-libbar__select.tbth-is-set,
+.tbth-teacher .tbth-libbar__select.tbth-is-set {
+	color: var(--tbt-blue, #0856C9) !important;
+	border-color: var(--tbt-blue, #0856C9) !important;
 }
 
 /*
@@ -119,20 +239,87 @@
 /*
  * Divi uppercases headings site-wide from ID-scoped selectors, which a
  * class-scoped rule cannot outrank. The bar's type is pinned here, anchored on
- * each app's own id, so the title reads as the Style Book writes it.
+ * each app's own id, so the title reads as the Style Book writes it: TBT Blue,
+ * Roboto Slab, 28px.
  */
 #tbth-homework-student .tbth-libbar__heading,
 #tbth-homework-teacher .tbth-libbar__heading {
 	margin: 0;
 	padding: 0;
-	font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
-	font-size: 18px;
+	font-family: "Roboto Slab", Georgia, serif;
+	font-size: 28px;
 	font-weight: 700;
 	line-height: 1.3;
-	letter-spacing: normal;
+	letter-spacing: -0.01em;
 	text-transform: none;
 	white-space: nowrap;
-	color: var(--tbt-text, #101828);
+	color: var(--tbt-blue, #0856C9);
+}
+
+/* --------------------------------------------------------------------------
+   The cards
+   -------------------------------------------------------------------------- */
+
+/*
+ * A list of submissions is a list, and a screen reader should say how many
+ * there are — so the list element stays and the bullet goes. Divi styles list
+ * items in page content from ID-scoped selectors, so this is anchored on each
+ * app's own id, on the list, the item and its marker.
+ */
+#tbth-homework-student .tbth-list,
+#tbth-homework-teacher .tbth-list {
+	list-style: none;
+	padding-left: 0;
+	margin-left: 0;
+}
+
+#tbth-homework-student .tbth-list > li,
+#tbth-homework-teacher .tbth-list > li {
+	list-style: none;
+}
+
+#tbth-homework-student .tbth-list > li::marker,
+#tbth-homework-teacher .tbth-list > li::marker {
+	content: none;
+}
+
+/*
+ * The spine: six pixels down the left edge of the card, the shape Matching
+ * Game and Swipe both draw. There it carries identity — #660000 is the Learn
+ * English domain colour — and homework belongs to no one domain, so here it
+ * carries state instead, from the state palette. TBT Blue while something is
+ * expected, muted grey once it is dealt with.
+ *
+ * Not green: green is success in this system, and a commented piece of
+ * homework is not a success — you may have just told a student their tenses
+ * collapsed in paragraph two. Grey says dealt with, which is what commented
+ * actually means. On a commented card the grey sits outside the comment
+ * block's blue rule, so the two do not compete and the eye goes to the
+ * comment, which is the point.
+ *
+ * Both pages, the same two colours, so the signal means one thing across the
+ * system: blue is open, grey is closed.
+ */
+.tbth-list > li[data-status="waiting"] {
+	border-left: 6px solid var(--tbt-blue, #0856C9);
+}
+
+.tbth-list > li[data-status="commented"] {
+	border-left: 6px solid var(--tbt-text-muted, #667085);
+}
+
+/*
+ * Any hover rule written with the border-color shorthand repaints the spine
+ * along with the rest of the border — the one thing Matching Game learned
+ * here. The card's hover belongs to .tbt-card, so the spine is re-asserted
+ * rather than trusted.
+ */
+.tbth-list > li[data-status="waiting"]:hover {
+	border-left-color: var(--tbt-blue, #0856C9);
+}
+
+.tbth-list > li[data-status="commented"]:hover {
+	border-left-color: var(--tbt-text-muted, #667085);
 }
 
 /* --------------------------------------------------------------------------
@@ -153,31 +340,41 @@
    -------------------------------------------------------------------------- */
 
 @media (max-width: 1100px) {
-	.tbth-libbar {
-		flex-wrap: wrap;
+	/*
+	 * Too narrow for the joined row: the title takes the first line, the
+	 * search and the dropdown share the second, and the lines step aside.
+	 */
+	.tbth-libbar__line {
+		display: none;
 	}
 
-	/* The title takes the first row; the controls share the second. */
 	.tbth-libbar__title {
 		flex: 1 1 100%;
 		min-width: 0;
 	}
 
-	.tbth-libbar__search,
 	.tbth-libbar__filter {
-		flex: 1 1 0;
-		width: auto;
+		flex: 1 1 100%;
 	}
 
-	/* The row is no longer one row, so the rule that filled it goes. */
-	.tbth-libbar__line {
-		display: none;
+	.tbth-libbar__search {
+		flex: 1 1 auto;
 	}
 }
 
 @media (max-width: 580px) {
-	.tbth-libbar__search,
+	/* One control to a line, each the width of the page. */
 	.tbth-libbar__filter {
+		flex-wrap: wrap;
+	}
+
+	.tbth-libbar__search {
 		flex: 1 1 100%;
+	}
+
+	.tbth-student .tbth-libbar__select,
+	.tbth-teacher .tbth-libbar__select {
+		flex: 1 1 100%;
+		width: 100% !important;
 	}
 }
