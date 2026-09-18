@@ -3,7 +3,7 @@ Contributors: tbt
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.1.0
+Stable tag: 0.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -18,13 +18,16 @@ reads and comments on it.
 Everything is private between one student and their teacher. No submission is
 ever shown on a public page, in a feed, or to another student.
 
-This release, 0.1.0, is the plugin's foundation plus one working thing: the
-form under the note, and the storage behind it.
-
 * One submission per student per lesson.
 * Edit until the teacher comments; after that the note is closed for changes.
 * Plain text only.
 * Times stored in UTC, displayed in the site's timezone.
+
+= The student's library =
+
+Put the shortcode `[tbt_homework_student]` on a page and a signed-in student
+sees their own homework, newest first, with a search and a status filter. It is
+read-only: homework is written under a lesson note, never from this page.
 
 = Requires TBT Notes =
 
@@ -54,6 +57,12 @@ lookups are keyed on the logged-in user.
 Deleting drops the table and its options. Deactivating keeps everything.
 
 == Changelog ==
+
+= 0.2.0 =
+* New: `[tbt_homework_student]`, the student's own library, with the shared
+  Admin Bar, a search and an All / Waiting for comment / Commented filter.
+* Submissions whose lesson a student may no longer view drop out of the list
+  rather than erroring.
 
 = 0.1.0 =
 * First release: plugin scaffolding, the `tbt_homework` table, two REST routes,

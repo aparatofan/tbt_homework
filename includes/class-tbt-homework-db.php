@@ -11,7 +11,8 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
- * The one table, and the two things the routes need from it.
+ * The one table, and the handful of things the routes and the shortcode need
+ * from it.
  */
 class TBT_Homework_DB {
 
@@ -86,6 +87,36 @@ class TBT_Homework_DB {
 		);
 
 		return $row ? $row : null;
+	}
+
+	/**
+	 * Every row belonging to one student, newest first.
+	 *
+	 * Keyed on user_id, so this can only ever return the caller's own work.
+	 * The rows come back whole; deciding which of them the student may still
+	 * see is not this file's job — that is the lesson brief's answer, applied
+	 * by the caller.
+	 *
+	 * @param int $user_id The student.
+	 *
+	 * @return array<int, array> Rows as associative arrays.
+	 */
+	public static function get_submissions_for_student( int $user_id ): array {
+		global $wpdb;
+
+		$table = self::table();
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT * FROM `{$table}` WHERE user_id = %d ORDER BY submitted_at DESC, id DESC",
+				$user_id
+			),
+			ARRAY_A
+		);
+
+		return is_array( $rows ) ? $rows : array();
 	}
 
 	/**

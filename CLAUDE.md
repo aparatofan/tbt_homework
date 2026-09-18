@@ -50,11 +50,43 @@ Everything here is private between one student and their teacher. No
 submission is ever rendered on a public page, in a feed, or to another
 student. There is no route that returns anyone else's work.
 
+## The Admin Bar
+
+Every library opens with the same one-row bar — a teacher's tools and a
+student's own work alike. The bar does not change because the reader changed.
+
+`tbt-components` ships primitives only (`.tbt-button`, `.tbt-input`,
+`.tbt-select`, `.tbt-textarea`, `.tbt-card`, `.tbt-tag`, `.tbt-panel`) and
+contains no bar. Each plugin carries its **own prefixed copy** — Notes has
+`tbt-notes-libbar__*`, this plugin has `tbth-libbar__*` with `__title`,
+`__heading`, `__line`, `__search`, `__filter`. Same shape, own prefix: sharing
+one set of class names is what caused the Notes/Swipe clash.
+
+Use the shared primitives where they exist — the search field is `.tbt-input`,
+the dropdown is `.tbt-select` — and take colours from the Hub tokens without
+defining local near-duplicates. The geometry is ours: 10px gaps, a 234px
+minimum title zone so the search starts 244px in, a 300px search, a 300px
+dropdown, 24px below the bar, and the reflow at 1100px and again at 580px.
+
+Two things to keep copying from Notes:
+
+- **Divi uppercases headings site-wide** from ID-scoped selectors. A
+  class-scoped rule loses to them, so heading type is pinned on the app's own
+  id (`#tbth-homework-student`), not on a class alone.
+- **No button on the student's bar.** A student writes homework under a lesson
+  note, so there is nowhere for one to go. The `--is-empty` modifier records
+  the missing button and the line simply runs on to the end of the row; the
+  line is never special-cased.
+
 ## Conventions
 
 - Prefix everything `tbth-` (CSS) / `TBTHomework` (JS globals). Never reuse a
   class name from another tool's stylesheet.
 - `class-tbt-homework-db.php` owns every query. No other file writes SQL.
+- The form under a note is REST-driven, because it mounts into a slot Notes
+  renders. The library page is rendered server-side by the shortcode and its
+  script only filters what is already there — a student without JavaScript
+  still reads their whole library.
 - Bodies are plain text: `sanitize_textarea_field()` in, `esc_html()` plus
   `nl2br()` out, in both PHP and JS. No rich text, no pasted markup.
 - Times are stored in UTC via `current_time( 'mysql', true )` and displayed
@@ -69,5 +101,6 @@ student. There is no route that returns anyone else's work.
 ```
 php -l <file>                  # every PHP file
 node --check assets/js/tbt-homework.js
+node --check assets/js/tbt-homework-student.js
 php tests/test-logic.php        # pure logic, no WordPress
 ```
