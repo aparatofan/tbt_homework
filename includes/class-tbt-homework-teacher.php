@@ -327,13 +327,17 @@ class TBT_Homework_Teacher {
 	 * The Admin Bar.
 	 *
 	 * The same one-row bar every library opens with, under this plugin's own
-	 * prefix, with the geometry 0.2.0 set: a 234px minimum title zone so the
-	 * search begins 244px in, a 300px search, a 300px dropdown.
+	 * prefix, in the same order as the student's: the title and its line, then
+	 * the filter group — the search, a line, the dropdown — then the line that
+	 * runs to the end of the row. The geometry is the one the stylesheet pins:
+	 * a 234px minimum title zone so the search begins 244px in, a 300px
+	 * search, a 300px dropdown.
 	 *
 	 * The title reads "Homework to check" rather than "Your {items}": these
 	 * are not your items, they are your students'. There is no button, because
-	 * you do not create homework — the is-empty modifier records the missing
-	 * button and the line runs on to the end of the row.
+	 * you do not create homework, and the end line simply runs on into the
+	 * space one would have taken. The is-empty modifier is the other case — an
+	 * empty queue, with no search and no dropdown to put a line between.
 	 *
 	 * The bar is a GET form, because search and filter are query parameters
 	 * here. Pressing Enter in the search submits it; the dropdown is submitted
@@ -346,7 +350,8 @@ class TBT_Homework_Teacher {
 	 */
 	private static function bar( string $base, array $state, array $page ): string {
 		$html  = sprintf(
-			'<form class="tbth-libbar tbth-libbar--is-empty" method="get" action="%s" role="search" data-tbth-bar>',
+			'<form class="tbth-libbar%s" method="get" action="%s" data-tbth-bar>',
+			$page['total'] > 0 ? '' : ' tbth-libbar--is-empty',
 			esc_url( self::form_action( $base ) )
 		);
 		$html .= self::hidden_fields( $base );
@@ -354,21 +359,26 @@ class TBT_Homework_Teacher {
 		$html .= '<div class="tbth-libbar__title">';
 		$html .= '<h2 class="tbth-libbar__heading">' . esc_html__( 'Homework to check', 'tbt-homework' ) . '</h2>';
 		$html .= self::count_pill( $page['waiting'] );
+		$html .= TBT_Homework_Bar::line();
 		$html .= '</div>';
 
 		// An empty queue has nothing to search and nothing to filter, exactly
 		// as an empty student library has neither control.
 		if ( $page['total'] > 0 ) {
-			$html .= sprintf(
-				'<input type="search" class="tbt-input tbth-libbar__search" name="%s" value="%s" placeholder="%s" aria-label="%s" autocomplete="off">',
-				esc_attr( self::PARAM_SEARCH ),
-				esc_attr( $state['search'] ),
-				esc_attr__( 'Search your students’ homework', 'tbt-homework' ),
-				esc_attr__( 'Search your students’ homework', 'tbt-homework' )
+			// The search landmark is the group, not the whole form: the form
+			// also carries whatever else was on the URL.
+			$html .= '<div class="tbth-libbar__filter" role="search">';
+
+			$html .= TBT_Homework_Bar::search_field(
+				__( 'Search your students’ homework', 'tbt-homework' ),
+				self::PARAM_SEARCH,
+				$state['search']
 			);
 
+			$html .= TBT_Homework_Bar::line();
+
 			$html .= sprintf(
-				'<select class="tbt-select tbth-libbar__filter%s" name="%s" aria-label="%s" data-tbth-filter>',
+				'<select class="tbt-select tbth-libbar__select%s" name="%s" aria-label="%s" data-tbth-filter>',
 				// Blue on Waiting and on Commented, because both narrow the
 				// list; not blue on All, which is the only one that does not.
 				// Blue on load is correct here — the list genuinely is filtered.
@@ -390,12 +400,15 @@ class TBT_Homework_Teacher {
 
 			// No button belongs on this bar, so the one that submits it
 			// without a script is there for keyboards and screen readers and
-			// takes no space in the row.
+			// takes no space in the row. It sits after the dropdown, which is
+			// where a keyboard reaches it.
 			$html .= '<button type="submit" class="tbth-libbar__go">' .
 				esc_html__( 'Apply', 'tbt-homework' ) . '</button>';
+
+			$html .= '</div>';
 		}
 
-		$html .= '<span class="tbth-libbar__line" aria-hidden="true"></span>';
+		$html .= TBT_Homework_Bar::line( true );
 		$html .= '</form>';
 
 		return $html;
@@ -486,7 +499,7 @@ class TBT_Homework_Teacher {
 	 * @param array $entries Shaped entries, newest first.
 	 */
 	private static function list_markup( array $entries ): string {
-		$html = '<ul class="tbth-queue" data-tbth-queue>';
+		$html = '<ul class="tbth-list tbth-queue" data-tbth-queue>';
 
 		foreach ( $entries as $entry ) {
 			$html .= self::card( $entry );

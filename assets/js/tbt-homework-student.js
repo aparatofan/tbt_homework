@@ -73,6 +73,7 @@
 		app.dataset.tbthMounted = '1';
 
 		var search = app.querySelector('[data-tbth-search]');
+		var clear = app.querySelector('[data-tbth-clear]');
 		var filter = app.querySelector('[data-tbth-filter]');
 		var list = app.querySelector('[data-tbth-entries]');
 		var noresults = app.querySelector('[data-tbth-noresults]');
@@ -104,6 +105,20 @@
 			if (filter) {
 				filter.classList.toggle(SET, status !== 'all');
 			}
+
+			// The × is there only while there is something to clear. Its own
+			// value, not the trimmed one: a box holding a space has text in
+			// it, whatever it matches.
+			if (clear) {
+				clear.hidden = !search || '' === search.value;
+			}
+		}
+
+		/** Empty the box, show everything again, and hand the field back. */
+		function clearSearch() {
+			search.value = '';
+			apply();
+			search.focus();
 		}
 
 		if (search) {
@@ -111,6 +126,21 @@
 			// A browser restoring a value on reload should not leave the list
 			// disagreeing with the box above it.
 			search.addEventListener('change', apply);
+
+			search.addEventListener('keydown', function (event) {
+				// Escape clears a search in progress. On an empty field it
+				// passes straight through — the browser and the theme both
+				// have uses for it.
+				if ('Escape' !== event.key || '' === search.value) {
+					return;
+				}
+				event.preventDefault();
+				clearSearch();
+			});
+		}
+
+		if (clear && search) {
+			clear.addEventListener('click', clearSearch);
 		}
 
 		if (filter) {

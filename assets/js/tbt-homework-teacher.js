@@ -3,14 +3,14 @@
  *
  * The page arrives complete: every card is already in the document, written by
  * PHP, and the search, the filter and the pager are links and a form. This
- * script does three things — it saves a comment, it collapses a long
- * submission, and it submits the bar when the dropdown changes.
+ * script saves a comment, collapses a long submission, submits the bar when
+ * the dropdown changes, and works the search box's ×.
  *
  * Only the first of those is load-bearing. Without JavaScript the queue still
- * reads whole, the filter still works through the bar's own button, and the
- * only thing missing is saving — which is why the box keeps your text and says
- * so when a save fails, rather than clearing it. You may have just written
- * three paragraphs.
+ * reads whole, the filter still works through the bar's own button, the search
+ * box still types and submits, and the only thing missing is saving — which is
+ * why the box keeps your text and says so when a save fails, rather than
+ * clearing it. You may have just written three paragraphs.
  *
  * No build step, no dependencies.
  */
@@ -78,6 +78,10 @@
 	function Count(app) {
 		this.app = app;
 		this.title = app.querySelector('.tbth-libbar__title');
+		// The title zone is the heading, the pill, then the line that joins it
+		// to the search. A pill built here goes where PHP would have put it,
+		// before that line, not after it.
+		this.line = this.title ? this.title.querySelector('.tbth-libbar__line') : null;
 		this.node = app.querySelector('[data-tbth-count]');
 		this.value = this.node ? parseInt(this.node.getAttribute('data-tbth-count'), 10) || 0 : 0;
 	}
@@ -102,7 +106,7 @@
 				return;
 			}
 			this.node = make('span', 'tbth-count');
-			this.title.appendChild(this.node);
+			this.title.insertBefore(this.node, this.line);
 		}
 
 		this.node.setAttribute('data-tbth-count', String(this.value));
@@ -267,6 +271,45 @@
 	};
 
 	/**
+	 * The search box's ×.
+	 *
+	 * It shows while there is something to clear, empties the box and hands
+	 * the field back. It does not submit: the box is a query parameter here,
+	 * so the emptied field is applied by the next submit — Enter, or changing
+	 * the dropdown — and the summary line's "Clear filters" is the one click
+	 * that resets the whole bar at once.
+	 *
+	 * @param {HTMLElement} app The shortcode's root.
+	 */
+	function search(app) {
+		var box = app.querySelector('[data-tbth-search]');
+		var clear = app.querySelector('[data-tbth-clear]');
+
+		if (!box || !clear) {
+			return;
+		}
+
+		function paint() {
+			// The box's own value, not a trimmed one: a box holding a space
+			// has text in it, whatever it matches.
+			clear.hidden = '' === box.value;
+		}
+
+		box.addEventListener('input', paint);
+		box.addEventListener('change', paint);
+
+		clear.addEventListener('click', function () {
+			box.value = '';
+			paint();
+			box.focus();
+		});
+
+		// The field arrives carrying whatever was searched for, so the × is
+		// decided here rather than in the markup.
+		paint();
+	}
+
+	/**
 	 * Wire one queue.
 	 *
 	 * @param {HTMLElement} app The shortcode's root.
@@ -285,6 +328,8 @@
 				filter.form.submit();
 			});
 		}
+
+		search(app);
 
 		var count = new Count(app);
 

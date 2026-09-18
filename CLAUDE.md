@@ -59,8 +59,11 @@ student's own work alike. The bar does not change because the reader changed.
 `.tbt-select`, `.tbt-textarea`, `.tbt-card`, `.tbt-tag`, `.tbt-panel`) and
 contains no bar. Each plugin carries its **own prefixed copy** — Notes has
 `tbt-notes-libbar__*`, this plugin has `tbth-libbar__*` with `__title`,
-`__heading`, `__line`, `__search`, `__filter`. Same shape, own prefix: sharing
-one set of class names is what caused the Notes/Swipe clash.
+`__heading`, `__line` (three of them, the last `__line--end`), `__filter` for
+the group that holds the search and the dropdown, `__search` for the 300px the
+`__icon`, `__input` and `__clear` are positioned inside, and `__select`. Same
+shape, own prefix: sharing one set of class names is what caused the
+Notes/Swipe clash.
 
 One prefixed copy, not one per page: `assets/css/tbt-homework-library.css` holds
 the bar and both library pages read it, so the student's and the teacher's
@@ -72,15 +75,33 @@ defining local near-duplicates. The geometry is ours: 10px gaps, a 234px
 minimum title zone so the search starts 244px in, a 300px search, a 300px
 dropdown, 24px below the bar, and the reflow at 1100px and again at 580px.
 
+The primitives draw those controls and **set their own width**, and the theme
+sets more on top; both beat a flex basis declared on a wrapper, which is how
+0.3.0 came out with a 540px search. So the widths are pinned one class deeper
+than the primitive — `.tbth-student .tbth-libbar__select`, never
+`.tbth-libbar__select` alone. That pin is the only `!important` this plugin
+writes, and `tbt-students` is the shipped reference for it.
+
 Two things to keep copying from Notes:
 
 - **Divi uppercases headings site-wide** from ID-scoped selectors. A
   class-scoped rule loses to them, so heading type is pinned on the app's own
   id (`#tbth-homework-student`), not on a class alone.
-- **No button on the student's bar.** A student writes homework under a lesson
-  note, so there is nowhere for one to go. The `--is-empty` modifier records
-  the missing button and the line simply runs on to the end of the row; the
-  line is never special-cased.
+- **No button on either bar.** A student writes homework under a lesson note,
+  and a teacher does not create homework at all, so there is nowhere for one to
+  go. Nothing records that: the end line takes the space a button would have
+  had, which is what a line whose whole job is to take what is left already
+  does. The line is never special-cased.
+
+`--is-empty` is a different case, and the two were confused once: it is an
+empty library, with no search and no dropdown, where the title's line is the
+only one left and the end line would double up behind it.
+
+A card's left edge carries a 6px spine. Elsewhere in the system a spine is a
+domain colour; homework belongs to no domain, so here it is state — TBT Blue
+waiting, muted grey commented, the same on both pages — and it is re-asserted
+with `border-left-color` in any hover state, because a `border-color` shorthand
+repaints it.
 
 ## Conventions
 
@@ -111,5 +132,6 @@ Two things to keep copying from Notes:
 php -l <file>                  # every PHP file
 node --check assets/js/tbt-homework.js
 node --check assets/js/tbt-homework-student.js
+node --check assets/js/tbt-homework-teacher.js
 php tests/test-logic.php        # pure logic, no WordPress
 ```

@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       TBT Homework
  * Description:       Private homework handover between a student and their teacher, under a TBT Notes lesson.
- * Version:           0.3.0
+ * Version:           0.3.1
  * Requires PHP:      8.0
  * Author:            TBT
  * License:           GPL-2.0-or-later
@@ -14,7 +14,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'TBT_HOMEWORK_VERSION', '0.3.0' );
+define( 'TBT_HOMEWORK_VERSION', '0.3.1' );
 define( 'TBT_HOMEWORK_DB_VERSION', '1' );
 define( 'TBT_HOMEWORK_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TBT_HOMEWORK_URL', plugin_dir_url( __FILE__ ) );
@@ -22,6 +22,7 @@ define( 'TBT_HOMEWORK_URL', plugin_dir_url( __FILE__ ) );
 require_once TBT_HOMEWORK_DIR . 'includes/class-tbt-homework-db.php';
 require_once TBT_HOMEWORK_DIR . 'includes/class-tbt-homework-rest.php';
 require_once TBT_HOMEWORK_DIR . 'includes/class-tbt-homework-frontend.php';
+require_once TBT_HOMEWORK_DIR . 'includes/class-tbt-homework-bar.php';
 require_once TBT_HOMEWORK_DIR . 'includes/class-tbt-homework-student.php';
 require_once TBT_HOMEWORK_DIR . 'includes/class-tbt-homework-teacher.php';
 
