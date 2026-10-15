@@ -103,18 +103,45 @@ waiting, muted grey commented, the same on both pages — and it is re-asserted
 with `border-left-color` in any hover state, because a `border-color` shorthand
 repaints it.
 
+## Marks
+
+A teacher's short notes on a student's words. The UI says **note**; the code
+says **mark** — the `marks` column, the `/marks` route, `tbth-mark*` classes,
+`TBTHomeworkMarks`. "Note" is TBT Notes' word, and sharing it is how names
+collide.
+
+- Offsets are **Unicode code points** into the **canonical body**: the stored
+  body with `\r\n` and then `\r` replaced by `\n`. Nothing rewrites the stored
+  body. Each mark stores its `quote`, and a mark whose quote no longer matches
+  is not drawn.
+- The teacher's card carries `TBT_Homework_Marks::hash()` (md5 of the canonical
+  body); `/marks` answers `409 tbt_homework_body_changed` to any other.
+- **Closed ≠ commented.** `is_closed()` is a comment *or* a mark — the
+  student's write gate. `has_comment()` is status: waiting/commented, the
+  count, the filter and the spine. Never swap one for the other.
+- `TBT_Homework_Marks::render()` and `TBTHomeworkMarks.render()` must produce
+  identical markup; the teacher's script counts offsets on whichever drew the
+  body. Change one, change the other. With no marks the output is exactly
+  `nl2br( esc_html() )`.
+- Kalam and `#FFC2C2` / `#E03131` are for these notes only.
+
 ## Conventions
 
 - Prefix everything `tbth-` (CSS) / `TBTHomework` (JS globals). Never reuse a
   class name from another tool's stylesheet.
 - `class-tbt-homework-db.php` owns every query. No other file writes SQL.
+- The schema runs on activation and from `tbt_homework_maybe_upgrade()` on
+  `plugins_loaded` whenever `tbt_homework_db_version` differs, because FTP
+  deploy never fires activation. Bump `TBT_HOMEWORK_DB_VERSION` only for a real
+  schema change.
 - The form under a note is REST-driven, because it mounts into a slot Notes
   renders. The library pages are rendered server-side by their shortcodes. The
-  student's script only filters what is already there — a student without
-  JavaScript still reads their whole library. The teacher's queue is paged at
-  25, so filtering in the browser would search only the rows in hand: there the
-  search, the filter and the page are query parameters, and JavaScript is
-  needed for saving a comment and nothing else.
+  student's script only filters what is already there and draws the notes over
+  their highlights — a student without JavaScript still reads their whole
+  library, and hovering a highlight shows its note. The teacher's queue is paged
+  at 25, so filtering in the browser would search only the rows in hand: there
+  the search, the filter and the page are query parameters, and JavaScript is
+  needed for saving a comment or a note and nothing else.
 - The teacher's queue is bounded by `class_id IN ( tbt_notes_class_ids_for_manager() )`
   and by nothing else. An empty array is the whole of "not a teacher".
 - Bodies are plain text: `sanitize_textarea_field()` in, `esc_html()` plus
@@ -133,5 +160,6 @@ php -l <file>                  # every PHP file
 node --check assets/js/tbt-homework.js
 node --check assets/js/tbt-homework-student.js
 node --check assets/js/tbt-homework-teacher.js
+node --check assets/js/tbt-homework-marks.js
 php tests/test-logic.php        # pure logic, no WordPress
 ```

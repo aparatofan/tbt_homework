@@ -3,8 +3,9 @@
  * [tbt_homework_teacher] — the page a teacher works from.
  *
  * Everything their students have sent, waiting ones first, with a comment box
- * on each. The list is rendered server-side and read whole; the script only
- * saves a comment, collapses a long submission and submits the bar's dropdown.
+ * on each. The list is rendered server-side and read whole; the script saves a
+ * comment, adds and edits the notes on a submission's words, collapses a long
+ * submission and submits the bar's dropdown.
  *
  * Search and the filter are query parameters rather than a pass over rendered
  * rows, which is the one place this page does not copy the student's library.
@@ -518,7 +519,11 @@ class TBT_Homework_Teacher {
 	 * the student's writing, and so is the comment box, because a comment is
 	 * writing a student will read as part of their learning.
 	 *
-	 * Plain text in, esc_html() plus nl2br() out, on both.
+	 * Plain text in, esc_html() plus nl2br() out, on both. The body goes
+	 * through TBT_Homework_Marks::render(), which writes exactly that when
+	 * there are no notes and the highlights when there are, inside a wrapper
+	 * the note layer is positioned in. data-tbth-hash is the hash of the body
+	 * as drawn; /marks refuses a save against any other.
 	 *
 	 * @param array $entry One shaped entry.
 	 */
@@ -540,9 +545,16 @@ class TBT_Homework_Teacher {
 		);
 		$html .= '</div>';
 
-		$html .= '<p class="tbth-meta">' . esc_html( self::meta_line( $entry ) ) . '</p>';
-		$html .= '<div class="tbth-body tbth-item__body" data-tbth-body>' .
-			nl2br( esc_html( $entry['body'] ) ) . '</div>';
+		$html .= '<p class="tbth-meta">' . esc_html( self::meta_line( $entry ) ) .
+			'<span data-tbth-marks-meta>' . esc_html( self::marks_meta( count( $entry['marks'] ) ) ) . '</span></p>';
+
+		$html .= '<div class="tbth-bodywrap tbth-item__bodywrap">';
+		$html .= sprintf(
+			'<div class="tbth-body tbth-item__body" data-tbth-body data-tbth-markable data-tbth-hash="%1$s">%2$s</div>',
+			esc_attr( TBT_Homework_Marks::hash( $entry['body'] ) ),
+			TBT_Homework_Marks::render( $entry['body'], $entry['marks'] )
+		);
+		$html .= '</div>';
 
 		$html .= '<div class="tbth-item__comment">';
 		$html .= sprintf(
@@ -626,6 +638,26 @@ class TBT_Homework_Teacher {
 		);
 
 		return implode( ' · ', $parts );
+	}
+
+	/**
+	 * " · 3 notes · Closed for changes", or nothing when there are none.
+	 *
+	 * Its own span after the meta line, so the script can rewrite it after a
+	 * save without rebuilding the line around it.
+	 *
+	 * @param int $count How many notes the submission carries.
+	 */
+	private static function marks_meta( int $count ): string {
+		if ( $count < 1 ) {
+			return '';
+		}
+
+		return ' · ' . sprintf(
+			/* translators: %s: a number of notes. */
+			_n( '%s note', '%s notes', $count, 'tbt-homework' ),
+			number_format_i18n( $count )
+		) . ' · ' . __( 'Closed for changes', 'tbt-homework' );
 	}
 
 	/**
@@ -833,7 +865,8 @@ class TBT_Homework_Teacher {
 	 * The shared sheet carries the card, the body type, the comment box and
 	 * the buttons; the library sheet carries the Admin Bar, which is one copy
 	 * shared with the student's page rather than a second one written here;
-	 * the teacher sheet adds the count, the queue and the pager.
+	 * the teacher sheet adds the count, the queue and the pager. The marks
+	 * sheet and script draw the notes, and Kalam is what they are written in.
 	 */
 	private static function enqueue(): void {
 		wp_enqueue_style(
@@ -857,10 +890,12 @@ class TBT_Homework_Teacher {
 			TBT_HOMEWORK_VERSION
 		);
 
+		TBT_Homework_Marks::enqueue();
+
 		wp_enqueue_script(
 			'tbt-homework-teacher',
 			TBT_HOMEWORK_URL . 'assets/js/tbt-homework-teacher.js',
-			array(),
+			array( 'tbt-homework-marks' ),
 			TBT_HOMEWORK_VERSION,
 			true
 		);
@@ -873,6 +908,9 @@ class TBT_Homework_Teacher {
 				// with plain permalinks rest_url() returns ?rest_route=...,
 				// which a naive join would corrupt.
 				'comment'   => esc_url_raw( rest_url( TBT_Homework_REST::REST_NAMESPACE . '/comment' ) ),
+				// Full URL for the same reason.
+				'marks'     => esc_url_raw( rest_url( TBT_Homework_REST::REST_NAMESPACE . '/marks' ) ),
+				'noteMax'   => TBT_Homework_Marks::NOTE_MAX,
 				'nonce'     => wp_create_nonce( 'wp_rest' ),
 				'maxLength' => TBT_Homework_REST::COMMENT_MAX,
 				'i18n'      => self::strings(),
@@ -898,6 +936,26 @@ class TBT_Homework_Teacher {
 			'countLabel'   => __( '%s waiting', 'tbt-homework' ),
 			'showMore'     => __( 'Show more', 'tbt-homework' ),
 			'showLess'     => __( 'Show less', 'tbt-homework' ),
+			/* translators: %s: the words the note is on. */
+			'noteOn'       => __( 'Note on “%s”', 'tbt-homework' ),
+			/* translators: %s: the words the note is on. */
+			'editNoteOn'   => __( 'Edit note on “%s”', 'tbt-homework' ),
+			'placeholder'  => __( 'Write your correction', 'tbt-homework' ),
+			'addNote'      => __( 'Add note', 'tbt-homework' ),
+			'saveNote'     => __( 'Save note', 'tbt-homework' ),
+			'cancel'       => __( 'Cancel', 'tbt-homework' ),
+			'deleteNote'   => __( 'Delete note', 'tbt-homework' ),
+			'addNoteLabel' => __( 'Add a note', 'tbt-homework' ),
+			'editNote'     => __( 'Edit note', 'tbt-homework' ),
+			'noteKeys'     => __( 'Enter saves · Esc cancels', 'tbt-homework' ),
+			'crossesLine'  => __( 'A note can’t run into the next paragraph. Select words inside one paragraph.', 'tbt-homework' ),
+			'overlaps'     => __( 'That overlaps a note you’ve already added. Select words outside the red highlight, or click the note to change it.', 'tbt-homework' ),
+			/* translators: %s: one note. */
+			'noteOne'      => __( '%s note', 'tbt-homework' ),
+			/* translators: %s: a number of notes. */
+			'noteMany'     => __( '%s notes', 'tbt-homework' ),
+			'closedForChanges' => __( 'Closed for changes', 'tbt-homework' ),
+			'notesFailed'  => __( 'Your notes could not be saved. Please try again.', 'tbt-homework' ),
 		);
 	}
 
@@ -1150,6 +1208,7 @@ class TBT_Homework_Teacher {
 				'lesson_title' => (string) ( $named['lesson_title'] ?? '' ),
 				'class_title'  => (string) ( $named['class_title'] ?? '' ),
 				'body'         => (string) ( $row['body'] ?? '' ),
+				'marks'        => TBT_Homework_Marks::decode( isset( $row['marks'] ) && is_string( $row['marks'] ) ? $row['marks'] : null ),
 				'comment'      => $comment,
 				'status'       => TBT_Homework_Student::status_for( $row ),
 				'submitted_at' => (string) ( $row['submitted_at'] ?? '' ),

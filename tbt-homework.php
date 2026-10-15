@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       TBT Homework
  * Description:       Private homework handover between a student and their teacher, under a TBT Notes lesson.
- * Version:           0.3.1
+ * Version:           0.4.0
  * Requires PHP:      8.0
  * Author:            TBT
  * License:           GPL-2.0-or-later
@@ -14,12 +14,13 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'TBT_HOMEWORK_VERSION', '0.3.1' );
-define( 'TBT_HOMEWORK_DB_VERSION', '1' );
+define( 'TBT_HOMEWORK_VERSION', '0.4.0' );
+define( 'TBT_HOMEWORK_DB_VERSION', '2' );
 define( 'TBT_HOMEWORK_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TBT_HOMEWORK_URL', plugin_dir_url( __FILE__ ) );
 
 require_once TBT_HOMEWORK_DIR . 'includes/class-tbt-homework-db.php';
+require_once TBT_HOMEWORK_DIR . 'includes/class-tbt-homework-marks.php';
 require_once TBT_HOMEWORK_DIR . 'includes/class-tbt-homework-rest.php';
 require_once TBT_HOMEWORK_DIR . 'includes/class-tbt-homework-frontend.php';
 require_once TBT_HOMEWORK_DIR . 'includes/class-tbt-homework-bar.php';
@@ -29,14 +30,30 @@ require_once TBT_HOMEWORK_DIR . 'includes/class-tbt-homework-teacher.php';
 /**
  * Create the table and remember the schema version.
  *
- * Activation is the only place the schema runs. Deactivation does nothing at
- * all: rows survive it, and survive a missing TBT Notes.
+ * Deactivation does nothing at all: rows survive it, and survive a missing TBT
+ * Notes. Activation is not the only way in, though — see below.
  */
 function tbt_homework_activate(): void {
 	TBT_Homework_DB::install();
 	update_option( 'tbt_homework_db_version', TBT_HOMEWORK_DB_VERSION );
 }
 register_activation_hook( __FILE__, 'tbt_homework_activate' );
+
+/**
+ * Bring the table up to date after a deploy that never activated anything.
+ *
+ * FTP sync copies files; it does not fire the activation hook. So when the
+ * stored schema version is not this file's, the schema runs here. dbDelta adds
+ * what is missing — the marks column, for version 2 — and touches no data.
+ * Priority 5, so the table is right before anything on the bootstrap reads it.
+ */
+function tbt_homework_maybe_upgrade(): void {
+	if ( get_option( 'tbt_homework_db_version' ) !== TBT_HOMEWORK_DB_VERSION ) {
+		TBT_Homework_DB::install();
+		update_option( 'tbt_homework_db_version', TBT_HOMEWORK_DB_VERSION );
+	}
+}
+add_action( 'plugins_loaded', 'tbt_homework_maybe_upgrade', 5 );
 
 /**
  * Wire everything up, after TBT Notes has had its turn on plugins_loaded.

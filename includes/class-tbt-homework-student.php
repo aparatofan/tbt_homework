@@ -5,7 +5,8 @@
  * The page is rendered server-side and read whole: a student writes homework
  * under a lesson note, never from here, so there is nothing on this page to
  * submit and nothing to fetch after load. The script that ships with it only
- * filters what is already on the page.
+ * filters what is already on the page, and draws the teacher's notes over the
+ * words they belong to.
  *
  * The decision helpers at the bottom of this class touch nothing outside their
  * arguments, so tests/test-logic.php runs them under plain PHP.
@@ -132,10 +133,14 @@ class TBT_Homework_Student {
 			TBT_HOMEWORK_VERSION
 		);
 
+		// Kalam, the marks sheet and the marks script: a body here can carry
+		// the teacher's notes.
+		TBT_Homework_Marks::enqueue();
+
 		wp_enqueue_script(
 			'tbt-homework-student',
 			TBT_HOMEWORK_URL . 'assets/js/tbt-homework-student.js',
-			array(),
+			array( 'tbt-homework-marks' ),
 			TBT_HOMEWORK_VERSION,
 			true
 		);
@@ -245,7 +250,12 @@ class TBT_Homework_Student {
 	/**
 	 * One submission.
 	 *
-	 * Plain text in, esc_html() plus nl2br() out. The card does not link back
+	 * Plain text in, esc_html() plus nl2br() out — through
+	 * TBT_Homework_Marks::render(), which writes exactly that when there are no
+	 * notes, and the highlights when there are. The wrapper is what the note
+	 * layer is positioned in. Read-only: nothing here selects or edits a note.
+	 *
+	 * The card does not link back
 	 * to its note: the lesson brief gives a title, a class and a date, and
 	 * nothing in the contract gives a lesson's address — inventing one would
 	 * mean reading Notes' own data, which this plugin does not do.
@@ -274,7 +284,8 @@ class TBT_Homework_Student {
 		$html .= '</div>';
 
 		$html .= '<p class="tbth-meta">' . esc_html( self::meta_line( $entry ) ) . '</p>';
-		$html .= '<div class="tbth-body">' . nl2br( esc_html( $entry['body'] ) ) . '</div>';
+		$html .= '<div class="tbth-bodywrap"><div class="tbth-body"' . ( $entry['marks'] ? ' data-tbth-marked' : '' ) . '>' .
+			TBT_Homework_Marks::render( $entry['body'], $entry['marks'] ) . '</div></div>';
 
 		if ( $commented ) {
 			$html .= '<div class="tbth-comment">';
@@ -295,22 +306,33 @@ class TBT_Homework_Student {
 	}
 
 	/**
-	 * "Group B · Sent 18 September".
+	 * "Group B · Sent 18 September", and " · 3 notes" once there are any.
 	 *
 	 * @param array $entry One shaped entry.
 	 */
 	private static function meta_line( array $entry ): string {
-		$sent = sprintf(
+		$parts = array();
+
+		if ( '' !== $entry['class_title'] ) {
+			$parts[] = $entry['class_title'];
+		}
+
+		$parts[] = sprintf(
 			/* translators: %s: a date, such as 18 September. */
 			__( 'Sent %s', 'tbt-homework' ),
 			TBT_Homework_REST::display_date( $entry['submitted_at'] )
 		);
 
-		if ( '' === $entry['class_title'] ) {
-			return $sent;
+		$count = count( $entry['marks'] );
+		if ( $count > 0 ) {
+			$parts[] = sprintf(
+				/* translators: %s: a number of notes. */
+				_n( '%s note', '%s notes', $count, 'tbt-homework' ),
+				number_format_i18n( $count )
+			);
 		}
 
-		return $entry['class_title'] . ' · ' . $sent;
+		return implode( ' · ', $parts );
 	}
 
 	/**
@@ -401,6 +423,7 @@ class TBT_Homework_Student {
 				'lesson_title' => (string) ( $named['lesson_title'] ?? '' ),
 				'class_title'  => (string) ( $named['class_title'] ?? '' ),
 				'body'         => (string) ( $row['body'] ?? '' ),
+				'marks'        => TBT_Homework_Marks::decode( isset( $row['marks'] ) && is_string( $row['marks'] ) ? $row['marks'] : null ),
 				'comment'      => $comment,
 				'status'       => self::status_for( $row ),
 				'submitted_at' => (string) ( $row['submitted_at'] ?? '' ),
@@ -415,13 +438,14 @@ class TBT_Homework_Student {
 	 * Which side of the filter a row falls on.
 	 *
 	 * comment IS NULL means new, and that single condition is the whole of
-	 * this page's status.
+	 * this page's status. Notes close a homework without commenting on it, so
+	 * a homework with notes and no comment is still waiting.
 	 *
 	 * @param array|null $row A row from the table.
 	 *
 	 * @return string 'waiting' or 'commented'.
 	 */
 	public static function status_for( ?array $row ): string {
-		return TBT_Homework_REST::is_closed( $row ) ? 'commented' : 'waiting';
+		return TBT_Homework_REST::has_comment( $row ) ? 'commented' : 'waiting';
 	}
 }

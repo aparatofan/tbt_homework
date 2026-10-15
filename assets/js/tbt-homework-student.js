@@ -7,6 +7,10 @@
  * student without JavaScript still reads their whole library, just without the
  * search and the filter.
  *
+ * It also hands every body that carries the teacher's notes to
+ * TBTHomeworkMarks, which draws them over their words, read-only. Without a
+ * script the highlights are still there, and hovering one shows its note.
+ *
  * No build step, no dependencies.
  */
 (function (window, document) {
@@ -71,6 +75,14 @@
 			return;
 		}
 		app.dataset.tbthMounted = '1';
+
+		// Drawn now, and again when a card filtered out comes back: watch()
+		// re-lays a body out when its width changes, including from 0.
+		if (window.TBTHomeworkMarks) {
+			Array.prototype.forEach.call(app.querySelectorAll('.tbth-body[data-tbth-marked]'), function (body) {
+				window.TBTHomeworkMarks.watch(body);
+			});
+		}
 
 		var search = app.querySelector('[data-tbth-search]');
 		var clear = app.querySelector('[data-tbth-clear]');

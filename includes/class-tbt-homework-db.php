@@ -31,7 +31,8 @@ class TBT_Homework_DB {
 	 * dbDelta is fussy: lowercase types, two spaces after PRIMARY KEY, KEY
 	 * rather than INDEX, one field per line. `comment` is nullable because
 	 * longtext cannot carry a DEFAULT in MySQL, and NULL is what "nobody has
-	 * commented yet" means anyway.
+	 * commented yet" means anyway. `marks` is nullable for the same reason:
+	 * NULL and '[]' both mean "no notes", and existing rows need no backfill.
 	 */
 	public static function install(): void {
 		global $wpdb;
@@ -50,6 +51,7 @@ class TBT_Homework_DB {
 			attachment varchar(255) NOT NULL default '',
 			comment longtext NULL,
 			commented_at datetime NULL,
+			marks longtext NULL,
 			submitted_at datetime NOT NULL,
 			updated_at datetime NOT NULL,
 			PRIMARY KEY  (id),
@@ -125,8 +127,9 @@ class TBT_Homework_DB {
 	 * A single INSERT ... ON DUPLICATE KEY UPDATE against the student_lesson
 	 * unique key, rather than a read followed by a write: a double-tap on Send
 	 * cannot produce two rows. submitted_at is set on insert only; updated_at
-	 * always. comment and commented_at are never touched here — they belong to
-	 * the teacher, in a later release.
+	 * always. comment, commented_at and marks are never touched here — they
+	 * belong to the teacher. A student can only write while the row is open,
+	 * which means it has no marks to keep.
 	 *
 	 * $class_id comes from tbt_notes_lesson_context() at the call site and
 	 * never from the browser.
@@ -184,7 +187,7 @@ class TBT_Homework_DB {
 	 */
 
 	/**
-	 * One row by id, for the comment route.
+	 * One row by id, for the comment and marks routes.
 	 *
 	 * Deliberately unscoped: the route reads the row first so a bad id can
 	 * answer 404, then checks the row's own class_id against the teacher's
@@ -422,6 +425,54 @@ class TBT_Homework_DB {
 					WHERE id = %d",
 					$comment,
 					$now,
+					$now,
+					$id
+				)
+			);
+		}
+
+		if ( false === $result ) {
+			return null;
+		}
+
+		return self::get_row( $id );
+	}
+
+	/**
+	 * Replace or clear one submission's marks.
+	 *
+	 * The whole list every time, as JSON, or SQL NULL when it is empty. The
+	 * caller has already checked the row's class, the body hash and every mark
+	 * against the body; this method takes the list it is given.
+	 *
+	 * @param int   $id    The submission id.
+	 * @param array $marks The clean, sorted list from TBT_Homework_Marks::check().
+	 *
+	 * @return array|null The stored row, or null if the write failed.
+	 */
+	public static function save_marks( int $id, array $marks ): ?array {
+		global $wpdb;
+
+		$table = self::table();
+		$now   = current_time( 'mysql', true );
+
+		if ( ! $marks ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+			$result = $wpdb->query(
+				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					"UPDATE `{$table}` SET marks = NULL, updated_at = %s WHERE id = %d",
+					$now,
+					$id
+				)
+			);
+		} else {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+			$result = $wpdb->query(
+				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					"UPDATE `{$table}` SET marks = %s, updated_at = %s WHERE id = %d",
+					wp_json_encode( array_values( $marks ) ),
 					$now,
 					$id
 				)

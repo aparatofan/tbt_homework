@@ -1,0 +1,305 @@
+/**
+ * TBT Homework — the teacher's notes on a student's words.
+ *
+ * A pale red highlight on the words, and the note above the line in Kalam, in
+ * red, like a handwritten correction. Loaded on the three places a body can
+ * carry notes: the teacher's queue, the student's library and the card under
+ * the lesson.
+ *
+ * The two colours are Notes' own "Mistake / correction" pair, declared here as
+ * plugin-local tokens on the app ids, the way Notes does it. No Hub token is
+ * redefined. Everything else takes the Hub tokens; the literals inside var()
+ * are fallbacks for a page without tbt-components, not second definitions.
+ *
+ * The UI says "note"; the classes say "mark", because "note" is Notes' word.
+ */
+
+#tbth-homework-teacher,
+#tbth-homework-student,
+.tbth-card {
+	--tbth-mark-bg: #FFC2C2;   /* Notes: Mistake / correction highlight */
+	--tbth-mark-ink: #E03131;  /* Notes: Mistake / correction ink */
+}
+
+/* --------------------------------------------------------------------------
+   The body's wrapper — what the note layer is positioned in
+   -------------------------------------------------------------------------- */
+
+.tbth-bodywrap {
+	position: relative;
+}
+
+/* --------------------------------------------------------------------------
+   The highlight
+   -------------------------------------------------------------------------- */
+
+.tbth-mark {
+	padding: 1px 2px;
+	margin: 0 -2px;
+	color: inherit;
+	background: var(--tbth-mark-bg, #FFC2C2);
+	border-radius: 3px;
+	-webkit-box-decoration-break: clone;
+	box-decoration-break: clone;
+}
+
+/* The selection while the popover is open on it. */
+.tbth-mark--pending {
+	background: var(--tbt-surface-blue, #EDF4FF);
+	box-shadow: inset 0 -2px 0 var(--tbt-blue, #0856C9);
+}
+
+/* The highlight whose note is being edited. */
+.tbth-mark.is-active {
+	box-shadow: inset 0 -2px 0 var(--tbth-mark-ink, #E03131);
+}
+
+[data-tbth-markable] {
+	cursor: text;
+}
+
+[data-tbth-markable] .tbth-mark[data-tbth-mark] {
+	cursor: pointer;
+}
+
+/*
+ * The anchor holds the strut and the first word together, so a note always
+ * sits over the start of its words, even when the highlight wraps.
+ */
+.tbth-mark__anchor {
+	white-space: nowrap;
+}
+
+/*
+ * A zero-width strut: it lifts only the line that carries a note, so plain
+ * lines keep their normal spacing. Tier 1 is the second height, for a note
+ * that would otherwise touch its neighbour.
+ */
+.tbth-mark__strut {
+	display: inline-block;
+	width: 0;
+	height: calc(1em + 26px);
+	vertical-align: baseline;
+}
+
+.tbth-mark[data-tier="1"] .tbth-mark__strut {
+	height: calc(1em + 48px);
+}
+
+.tbth-mark--pending .tbth-mark__strut {
+	height: 0;
+}
+
+/* --------------------------------------------------------------------------
+   The note layer, and one note
+   -------------------------------------------------------------------------- */
+
+.tbth-marks-layer {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
+.tbth-mark-note {
+	position: absolute;
+	box-sizing: border-box;
+	max-width: 240px;
+	height: 20px;
+	padding: 0 2px;
+	font-family: "Kalam", "Comic Sans MS", cursive;
+	font-size: 15px;
+	font-weight: 400;
+	line-height: 20px;
+	text-align: left;
+	color: var(--tbth-mark-ink, #E03131);
+	white-space: nowrap;
+	overflow: hidden;
+	background: transparent;
+	border: 0;
+	pointer-events: auto;
+}
+
+[data-tbth-markable] ~ .tbth-marks-layer .tbth-mark-note,
+.tbth-mark-note.is-long {
+	cursor: pointer;
+}
+
+.tbth-mark-note:focus-visible {
+	outline: none;
+	border-radius: 3px;
+	box-shadow: 0 0 0 3px rgba(8, 86, 201, 0.18);
+}
+
+/* Cut off with a soft fade, and room for the triangle. */
+.tbth-mark-note.is-long {
+	padding-right: 14px;
+	background: linear-gradient(to right, transparent calc(100% - 34px), var(--tbt-white, #FFFFFF) calc(100% - 16px));
+}
+
+/*
+ * The small red triangle that opens a long note. The button is the whole 12px
+ * square, so all of it takes the click; the triangle is drawn inside it.
+ */
+.tbth-mark-note__more {
+	position: absolute;
+	right: 0;
+	bottom: 1px;
+	width: 12px;
+	min-width: 0;
+	height: 12px;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	background: transparent;
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.tbth-mark-note__more::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: var(--tbth-mark-ink, #E03131);
+	border-radius: 0 0 2px 0;
+	clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
+.tbth-mark-note__more:hover::before {
+	background: var(--tbt-danger, #C62828);
+}
+
+.tbth-mark-note__more:focus-visible {
+	outline: 2px solid var(--tbt-blue, #0856C9);
+	outline-offset: 1px;
+}
+
+/* A long note, opened. */
+.tbth-mark-full {
+	position: absolute;
+	z-index: 5;
+	box-sizing: border-box;
+	width: max-content;
+	max-width: min(340px, 100%);
+	padding: 8px 12px 10px;
+	font-family: "Kalam", "Comic Sans MS", cursive;
+	font-size: 16px;
+	font-weight: 400;
+	line-height: 1.4;
+	color: var(--tbth-mark-ink, #E03131);
+	white-space: normal;
+	overflow-wrap: break-word;
+	background: var(--tbt-white, #FFFFFF);
+	border: 1px solid var(--tbth-mark-bg, #FFC2C2);
+	border-radius: 12px;
+	box-shadow: 0 10px 28px rgba(8, 86, 201, 0.12);
+}
+
+/* --------------------------------------------------------------------------
+   The teacher's add / edit popover
+   -------------------------------------------------------------------------- */
+
+.tbth-mark-pop {
+	position: absolute;
+	z-index: 6;
+	box-sizing: border-box;
+	width: 320px;
+	max-width: 100%;
+	padding: 16px;
+	font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+	background: var(--tbt-white, #FFFFFF);
+	border: 1px solid var(--tbt-border, #D8E3F0);
+	border-radius: 16px;
+	box-shadow: 0 10px 28px rgba(8, 86, 201, 0.12);
+}
+
+.tbth-mark-pop__label {
+	display: block;
+	margin: 0 0 8px;
+	font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 1.5;
+	color: var(--tbt-text, #101828);
+}
+
+.tbth-mark-pop__quote {
+	font-family: "Roboto Slab", Georgia, serif;
+	font-weight: 400;
+	color: var(--tbt-text-muted, #667085);
+}
+
+/* Single line in practice: newlines are stripped as they are typed. */
+.tbth-mark-pop__field {
+	display: block;
+	box-sizing: border-box;
+	width: 100%;
+	min-height: 64px;
+	margin: 0;
+	padding: 8px 12px;
+	font-family: "Kalam", "Comic Sans MS", cursive;
+	font-size: 17px;
+	line-height: 1.4;
+	color: var(--tbth-mark-ink, #E03131);
+	background: var(--tbt-surface-soft, #F0F5FE);
+	border: 1px solid var(--tbt-border, #D8E3F0);
+	border-radius: 12px;
+	resize: vertical;
+}
+
+.tbth-mark-pop__field:focus {
+	background: var(--tbt-white, #FFFFFF);
+	border-color: var(--tbt-blue, #0856C9);
+	box-shadow: 0 0 0 3px rgba(8, 86, 201, 0.18);
+	outline: none;
+}
+
+.tbth-mark-pop__actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.tbth-mark-pop__actions .tbth-btn {
+	min-height: 40px;
+	padding: 0 16px;
+}
+
+/* Quiet danger, right-aligned. */
+.tbth-mark-pop__actions .tbth-mark-pop__delete {
+	margin-left: auto;
+	color: var(--tbt-danger, #C62828);
+	background: none;
+	border-color: transparent;
+}
+
+.tbth-mark-pop__actions .tbth-mark-pop__delete:hover {
+	background: var(--tbt-danger-surface, #FFF1F1);
+}
+
+.tbth-mark-pop__keys {
+	margin: 8px 0 0;
+	font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--tbt-text-muted, #667085);
+}
+
+/* --------------------------------------------------------------------------
+   Reduced motion — nothing here moves, and nothing inherited should either
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+	.tbth-mark,
+	.tbth-mark-note,
+	.tbth-mark-note__more,
+	.tbth-mark-full,
+	.tbth-mark-pop,
+	.tbth-mark-pop .tbth-btn {
+		transition: none;
+		animation: none;
+	}
+}

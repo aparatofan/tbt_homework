@@ -3,7 +3,7 @@ Contributors: tbt
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.3.1
+Stable tag: 0.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -19,7 +19,10 @@ Everything is private between one student and their teacher. No submission is
 ever shown on a public page, in a feed, or to another student.
 
 * One submission per student per lesson.
-* Edit until the teacher comments; after that the note is closed for changes.
+* Edit until the teacher comments or adds a note; after that it is closed for
+  changes.
+* The teacher can mark words with short handwritten-style notes; the student
+  sees them, read-only.
 * Plain text only.
 * Times stored in UTC, displayed in the site's timezone.
 
@@ -76,6 +79,22 @@ checks the stored row's own class before writing anything.
 Deleting drops the table and its options. Deactivating keeps everything.
 
 == Changelog ==
+
+= 0.4.0 =
+* New: teacher notes on homework. On the queue, select a few words and write a
+  short correction; the words get a pale red highlight and the note appears
+  above the line in Kalam, in red. Click a note to edit or delete it.
+* Long notes are cut at 240px with a fade and a small red triangle that opens
+  the whole note.
+* The student sees the same notes, read-only, on My Homework and under the
+  lesson.
+* The first note closes the homework for the student, as a comment does;
+  deleting every note with no comment opens it again. Status is unchanged: a
+  homework with notes and no final comment is still Waiting.
+* New: `POST /marks`. A save is refused if the student changed the homework
+  after the teacher's page was opened.
+* Schema version 2: one new `marks` column, added on the next request after an
+  FTP deploy, without reactivating.
 
 = 0.3.1 =
 * Fixed: the Admin Bar's search and dropdown drew at around 540px instead of

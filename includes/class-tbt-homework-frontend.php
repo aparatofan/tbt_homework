@@ -47,10 +47,14 @@ class TBT_Homework_Frontend {
 			TBT_HOMEWORK_VERSION
 		);
 
+		// The submitted body can carry the teacher's notes, so Kalam, the
+		// marks sheet and the marks script come with the card.
+		TBT_Homework_Marks::enqueue();
+
 		wp_enqueue_script(
 			'tbt-homework',
 			TBT_HOMEWORK_URL . 'assets/js/tbt-homework.js',
-			array(),
+			array( 'tbt-homework-marks' ),
 			TBT_HOMEWORK_VERSION,
 			true
 		);
@@ -94,6 +98,7 @@ class TBT_Homework_Frontend {
 			'updated'        => __( 'Updated %s', 'tbt-homework' ),
 			'commentEyebrow' => __( 'Your teacher’s comment', 'tbt-homework' ),
 			'closed'         => __( 'Your teacher has commented, so this homework is closed for changes.', 'tbt-homework' ),
+			'closedMarks'    => __( 'Your teacher has started marking this homework, so it is closed for changes.', 'tbt-homework' ),
 		);
 	}
 }
