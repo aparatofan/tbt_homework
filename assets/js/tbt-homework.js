@@ -12,6 +12,7 @@
 
 	var DATA = window.TBTHomeworkData || {};
 	var I18N = DATA.i18n || {};
+	var MARKS = window.TBTHomeworkMarks || null;
 	var MAX = parseInt(DATA.maxLength, 10) || 20000;
 
 	/**
@@ -195,7 +196,13 @@
 		}
 
 		if (closed) {
-			this.renderComment();
+			// Closed by the final comment, or by the teacher's first note
+			// with no comment yet.
+			if (this.row.closed_reason === 'marks' || this.row.comment === null || this.row.comment === undefined) {
+				this.root.appendChild(make('p', 'tbth-closed', I18N.closedMarks));
+			} else {
+				this.renderComment();
+			}
 		}
 	};
 
@@ -268,9 +275,19 @@
 	Card.prototype.renderSubmission = function () {
 		var card = this;
 
+		// The teacher's notes, read-only, over the words they belong to. With
+		// no notes this is the same body as before, drawn the way PHP draws it.
+		var wrap = make('div', 'tbth-bodywrap');
 		var body = make('div', 'tbth-body');
-		body.innerHTML = toHtml(this.row.body);
-		this.root.appendChild(body);
+		var marks = Array.isArray(this.row.marks) ? this.row.marks : [];
+
+		body.innerHTML = MARKS ? MARKS.render(this.row.body, marks) : toHtml(this.row.body);
+		wrap.appendChild(body);
+		this.root.appendChild(wrap);
+
+		if (MARKS && marks.length) {
+			MARKS.watch(body);
+		}
 
 		this.root.appendChild(make('p', 'tbth-meta', this.metaLine()));
 

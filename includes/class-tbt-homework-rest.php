@@ -42,7 +42,7 @@ class TBT_Homework_REST {
 	}
 
 	/**
-	 * Two routes for the student, two for the teacher.
+	 * Two routes for the student, three for the teacher.
 	 *
 	 * permission_callback is is_user_logged_in and nothing more. Being logged
 	 * in says nothing about which class you are in, nor which classes you
@@ -93,6 +93,20 @@ class TBT_Homework_REST {
 				array(
 					'methods'             => WP_REST_Server::CREATABLE,
 					'callback'            => array( __CLASS__, 'handle_comment' ),
+					'permission_callback' => 'is_user_logged_in',
+				),
+			)
+		);
+
+		// Registered like /comment, for the same reason: the scope is the
+		// stored row's class, resolved inside the callback.
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/marks',
+			array(
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( __CLASS__, 'handle_marks' ),
 					'permission_callback' => 'is_user_logged_in',
 				),
 			)
@@ -163,12 +177,16 @@ class TBT_Homework_REST {
 		$user_id  = get_current_user_id();
 		$lesson_id = (int) $context['lesson_id'];
 
-		// Step 7: once the teacher has commented, the note is closed.
+		// Step 7: once the teacher has commented or started marking, the
+		// homework is closed. The message says which, because the student
+		// can see one and may not yet have seen the other.
 		$existing = TBT_Homework_DB::get_submission( $user_id, $lesson_id );
 		if ( self::is_closed( $existing ) ) {
 			return new WP_Error(
 				'tbt_homework_closed',
-				__( 'Your teacher has already commented on this homework, so it is closed for changes.', 'tbt-homework' ),
+				self::has_comment( $existing )
+					? __( 'Your teacher has already commented on this homework, so it is closed for changes.', 'tbt-homework' )
+					: __( 'Your teacher has started marking this homework, so it is closed for changes.', 'tbt-homework' ),
 				array( 'status' => 409 )
 			);
 		}
@@ -303,6 +321,131 @@ class TBT_Homework_REST {
 	}
 
 	/**
+	 * POST /marks { id, marks, hash }
+	 *
+	 * The whole list every time: the browser always sends every mark the card
+	 * should carry, and an empty list clears them all. Validation, first
+	 * failure wins. Steps 2 and 3 are /comment's, word for word: the row is
+	 * read first so a bad id answers 404, then its own class_id is tested
+	 * against the classes this caller manages.
+	 *
+	 * Step 4 is what keeps a mark off text the student changed while the
+	 * teacher's page was open: the card carries the hash of the body it drew,
+	 * and a body that no longer matches it is refused before any mark is read.
+	 *
+	 * @param WP_REST_Request $request The request.
+	 *
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function handle_marks( $request ) {
+		// 1. TBT Notes missing — checked here, at the point of use.
+		if ( ! function_exists( 'tbt_notes_class_ids_for_manager' ) ) {
+			return self::unavailable();
+		}
+
+		// 2. A positive integer, and a row that exists.
+		$raw = $request->get_param( 'id' );
+		$row = self::is_valid_id( $raw ) ? TBT_Homework_DB::get_row( (int) $raw ) : null;
+
+		if ( null === $row ) {
+			return new WP_Error(
+				'tbt_homework_no_submission',
+				__( 'That homework does not exist.', 'tbt-homework' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		// 3. The scope check, against the stored row.
+		$class_ids = TBT_Homework_DB::positive_ids( (array) tbt_notes_class_ids_for_manager() );
+
+		if ( ! TBT_Homework_Teacher::in_scope( (int) $row['class_id'], $class_ids ) ) {
+			return new WP_Error(
+				'tbt_homework_not_your_class',
+				__( 'That homework is not from one of your classes.', 'tbt-homework' ),
+				array( 'status' => 403 )
+			);
+		}
+
+		// 4. The body the teacher marked is still the body in the table.
+		$body = (string) $row['body'];
+		$hash = $request->get_param( 'hash' );
+
+		if ( ! is_string( $hash ) || ! hash_equals( TBT_Homework_Marks::hash( $body ), $hash ) ) {
+			return new WP_Error(
+				'tbt_homework_body_changed',
+				__( 'The student changed this homework after you opened the page. Reload the page to mark the new version.', 'tbt-homework' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		// 5. Plain, single-line notes in; then every mark against the body.
+		$verdict = TBT_Homework_Marks::check( self::sanitise_marks( $request->get_param( 'marks' ) ), $body );
+
+		if ( is_string( $verdict ) ) {
+			return new WP_Error(
+				'tbt_homework_bad_marks',
+				__( 'Those notes could not be saved. Reload the page and try again.', 'tbt-homework' ),
+				array(
+					'status' => 400,
+					'reason' => $verdict,
+				)
+			);
+		}
+
+		// 6. Write.
+		$saved = TBT_Homework_DB::save_marks( (int) $row['id'], $verdict );
+
+		if ( null === $saved ) {
+			return new WP_Error(
+				'tbt_homework_marks_not_saved',
+				__( 'Your notes could not be saved. Please try again.', 'tbt-homework' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		// 7. Status still means "has the teacher written the final comment".
+		return rest_ensure_response(
+			array(
+				'id'     => (int) $saved['id'],
+				'marks'  => TBT_Homework_Marks::decode( $saved['marks'] ?? null ),
+				'closed' => self::is_closed( $saved ),
+				'status' => self::has_comment( $saved ) ? 'commented' : 'waiting',
+			)
+		);
+	}
+
+	/**
+	 * Each note through sanitize_text_field() and trim(), and nothing else.
+	 *
+	 * The shape is left for TBT_Homework_Marks::check() to judge, so a list
+	 * that is not a list still arrives there as one and answers with a code.
+	 *
+	 * @param mixed $raw The marks parameter as it arrived.
+	 *
+	 * @return mixed
+	 */
+	private static function sanitise_marks( $raw ) {
+		if ( is_string( $raw ) ) {
+			$decoded = json_decode( $raw, true );
+			if ( is_array( $decoded ) ) {
+				$raw = $decoded;
+			}
+		}
+
+		if ( ! is_array( $raw ) ) {
+			return $raw;
+		}
+
+		foreach ( $raw as $key => $mark ) {
+			if ( is_array( $mark ) && isset( $mark['note'] ) && is_string( $mark['note'] ) ) {
+				$raw[ $key ]['note'] = trim( sanitize_text_field( $mark['note'] ) );
+			}
+		}
+
+		return $raw;
+	}
+
+	/**
 	 * The classes this caller manages, or the error that stops them.
 	 *
 	 * tbt_notes_class_ids_for_manager() returns the classes you teach, every
@@ -345,7 +488,9 @@ class TBT_Homework_REST {
 	 * One queue entry, shaped for the wire.
 	 *
 	 * Plain text out, escaped exactly as the submission body is: esc_html()
-	 * plus nl2br(), so pasted markup is text on this route too.
+	 * plus nl2br(), so pasted markup is text on this route too. The marks and
+	 * the body hash go out as well, which is everything a client needs to save
+	 * through /marks.
 	 *
 	 * @param array $entry A shaped entry from the teacher's page.
 	 */
@@ -359,6 +504,8 @@ class TBT_Homework_REST {
 			'class_title'          => (string) $entry['class_title'],
 			'body'                 => (string) $entry['body'],
 			'body_html'            => nl2br( esc_html( (string) $entry['body'] ) ),
+			'body_hash'            => TBT_Homework_Marks::hash( (string) $entry['body'] ),
+			'marks'                => (array) ( $entry['marks'] ?? array() ),
 			'status'               => (string) $entry['status'],
 			'submitted_at'         => (string) $entry['submitted_at'],
 			'submitted_at_display' => self::display_date( (string) $entry['submitted_at'] ),
@@ -454,6 +601,10 @@ class TBT_Homework_REST {
 	 * for display — esc_html() plus nl2br(), the same pairing the script
 	 * applies on its own side.
 	 *
+	 * closed is true once the teacher has commented or added a note, and
+	 * closed_reason says which: 'comment' wins when both are true, because the
+	 * comment is what the student will read first.
+	 *
 	 * attachment is reserved for a later release: nothing reads it, so it is
 	 * not exposed here.
 	 *
@@ -480,7 +631,9 @@ class TBT_Homework_REST {
 			'comment_html'          => null === $comment ? null : nl2br( esc_html( $comment ) ),
 			'commented_at'          => empty( $row['commented_at'] ) ? null : (string) $row['commented_at'],
 			'commented_at_display'  => empty( $row['commented_at'] ) ? null : self::display_date( (string) $row['commented_at'] ),
-			'closed'                => null !== $comment,
+			'marks'                 => TBT_Homework_Marks::decode( $row['marks'] ?? null ),
+			'closed'                => self::is_closed( $row ),
+			'closed_reason'         => self::closed_reason( $row ),
 		);
 	}
 
@@ -647,11 +800,40 @@ class TBT_Homework_REST {
 	}
 
 	/**
-	 * Has the teacher commented? Then the row is closed for changes.
+	 * Has the teacher written the final comment?
+	 *
+	 * This is what status means — waiting or commented — and what the count,
+	 * the queue filter and the card's spine follow. Notes do not change it.
+	 *
+	 * @param array|null $row A row from the table, or null when there is none.
+	 */
+	public static function has_comment( ?array $row ): bool {
+		return is_array( $row ) && array_key_exists( 'comment', $row ) && null !== $row['comment'];
+	}
+
+	/**
+	 * Is the row closed for the student's changes?
+	 *
+	 * A comment closes it, and so does the first note. Closed is not the same
+	 * as commented: a homework with notes and no comment is closed and still
+	 * waiting. Deleting every note, with no comment, opens it again.
 	 *
 	 * @param array|null $row A row from the table, or null when there is none.
 	 */
 	public static function is_closed( ?array $row ): bool {
-		return is_array( $row ) && array_key_exists( 'comment', $row ) && null !== $row['comment'];
+		return self::has_comment( $row ) || TBT_Homework_Marks::has_marks( $row );
+	}
+
+	/**
+	 * Why the row is closed: 'comment', 'marks', or null when it is open.
+	 *
+	 * @param array|null $row A row from the table, or null when there is none.
+	 */
+	public static function closed_reason( ?array $row ): ?string {
+		if ( self::has_comment( $row ) ) {
+			return 'comment';
+		}
+
+		return TBT_Homework_Marks::has_marks( $row ) ? 'marks' : null;
 	}
 }

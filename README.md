@@ -3,11 +3,61 @@
 Private homework handover between a student and their teacher, under a TBT
 Notes lesson.
 
-**Version 0.3.1** — the bar and the cards: the search and the dropdown are
-300px again on both library pages, the heading is TBT Blue Roboto Slab, and
-every card carries a spine that says whether it is waiting or dealt with.
+**Version 0.4.0** — teacher notes on homework: a teacher selects a few words
+in a student's homework and writes a short correction, which appears above the
+line in red handwriting. The student sees the same marked-up homework,
+read-only.
 
-## What 0.3.1 fixes
+## What 0.4.0 adds
+
+On the queue, select a few words in a submission. A small popover opens under
+them: write the correction, press Enter, and the words get a pale red highlight
+with the note above the line in Kalam, in red, like a handwritten correction.
+The colours are Notes' own "Mistake / correction" pair, `#FFC2C2` and
+`#E03131`. Click a note or its highlight to edit or delete it.
+
+Notes sit freely above their words. When two on the same line would touch, the
+later one moves up to a second height, and only lines that carry a note get the
+extra room. A note is one line, at most 240px; anything longer fades out with a
+small red triangle in its corner, which opens the whole note.
+
+The first note closes the homework for the student, exactly as a comment does.
+Deleting every note — with no comment — opens it again. There are no versions.
+Notes do not change status: a homework with notes and no final comment is still
+**Waiting**, and the count, the filter and the spine still mean "has the
+teacher written the final comment". The card's meta line says
+`· 3 notes · Closed for changes`.
+
+The student sees the same highlights and notes, read-only, on **My Homework**
+and in the card under the lesson, where the closed line reads "Your teacher has
+started marking this homework, so it is closed for changes."
+
+The UI says **note**; the code says **mark** — a `marks` column, a `/marks`
+route, `tbth-mark*` classes, a `TBTHomeworkMarks` global — because "note" is
+TBT Notes' word everywhere.
+
+### How a mark is kept honest
+
+A mark is a range of Unicode code points into the *canonical body* — the stored
+body with `\r\n` and then `\r` turned into `\n` — plus the words it covers and
+the note. Storing the words means a mark can never silently land on the wrong
+ones: a mark whose words no longer match is not drawn. The teacher's card
+carries an md5 of the canonical body, and `/marks` refuses a save against any
+other body, so a note is never saved on text the student changed while the
+teacher's page was open.
+
+`TBT_Homework_Marks::render()` in PHP and `TBTHomeworkMarks.render()` in JS
+write the same markup; with no marks it is byte for byte the old
+`nl2br( esc_html() )`.
+
+### Schema
+
+`TBT_HOMEWORK_DB_VERSION` is `2`: one new column, `marks longtext NULL`. FTP
+deploy never fires activation, so `tbt_homework_maybe_upgrade()` runs the
+schema on `plugins_loaded` whenever the stored version differs. `dbDelta` adds
+the column and touches no data; existing rows need no backfill.
+
+## What 0.3.1 fixed
 
 The Admin Bar drew its search and its dropdown at around 540px rather than
 300px, and the whole row lost its shape with them. `.tbt-input` and
@@ -95,7 +145,8 @@ Nothing is public at any point.
 | 0.1.0 | Scaffolding, table, REST, the form under the note |
 | 0.2.0 | `[tbt_homework_student]` — the student's dossier page |
 | 0.3.0 | `[tbt_homework_teacher]` — the teacher's queue, filters, the count |
-| **0.3.1** | The bar's real widths, its search field, and the cards' spine |
+| 0.3.1 | The bar's real widths, its search field, and the cards' spine |
+| **0.4.0** | Teacher notes on homework |
 | later | Audio recording |
 
 ## Requirements
@@ -141,13 +192,15 @@ GET  /submission?lesson_id=412       → the caller's row for that lesson, or nu
 POST /submission { lesson_id, body } → create or update the caller's row
 GET  /queue?status=&search=&page=    → the caller's students' work, newest first
 POST /comment { id, comment }        → write, replace or clear one comment
+POST /marks { id, marks, hash }      → replace every note on one submission
 ```
 
 POST `/submission` fails, first failure winning: `503` when Notes is missing,
 `400` for a lesson id that is not a positive integer, `404` when the lesson does
 not exist, `403` when `can_view` is false, `403 tbt_homework_not_for_teachers`
 when the caller manages the class, `400` for an empty or over-long body (20,000
-characters), `409 tbt_homework_closed` once the teacher has commented.
+characters), `409 tbt_homework_closed` once the teacher has commented or added
+a note — the message says which.
 
 POST `/comment` fails in the same style: `503` when Notes is missing, `404` for
 an id that is not a positive integer or names no row, `403
@@ -156,9 +209,18 @@ manages, `400` over 20,000 characters. An empty comment is not a failure — it
 clears the comment and its date, and the student can edit again. `GET /queue`
 answers `403 tbt_homework_not_a_teacher` to anyone who manages no classes.
 
+POST `/marks` takes the whole list every time; an empty list clears it. It
+fails like `/comment` for Notes, the id and the scope, then `409
+tbt_homework_body_changed` when `hash` is not the md5 of the stored canonical
+body, `400 tbt_homework_bad_marks` (with `data.reason`) when a mark is out of
+range, does not quote the body exactly, crosses a line, starts or ends with
+whitespace, overlaps another, or has an empty or over-200-character note, and
+`500` when the write fails. It returns `{ id, marks, closed, status }`, where
+`status` is still waiting or commented.
+
 `class_id` is not a parameter on any route: on `/submission` the server takes it
-from the lesson context, and on `/comment` the scope check reads it from the row
-in the database. Neither ever reads one the browser sent.
+from the lesson context, and on `/comment` and `/marks` the scope check reads it
+from the row in the database. Neither ever reads one the browser sent.
 
 ## The library page
 
@@ -230,8 +292,9 @@ hover state rather than trusted.
 
 One table, `{prefix}tbt_homework`, one row per student per lesson, enforced by
 a unique key rather than by reading before writing — a double-tap on Send
-cannot create two rows. `comment IS NULL` means new. `class_id` is copied in at
-write time. `attachment` is reserved and still always empty — nothing reads or
+cannot create two rows. `comment IS NULL` means new — waiting — and a row is
+closed for the student when it has a comment or a non-empty `marks` list.
+`class_id` is copied in at write time. `attachment` is reserved and still always empty — nothing reads or
 writes it — so audio arrives later as a feature rather than a migration.
 
 Created on activation, dropped on delete. Deactivating keeps everything.
@@ -243,11 +306,12 @@ php -l tbt-homework.php            # and every other PHP file
 node --check assets/js/tbt-homework.js
 node --check assets/js/tbt-homework-student.js
 node --check assets/js/tbt-homework-teacher.js
+node --check assets/js/tbt-homework-marks.js
 php tests/test-logic.php
 ```
 
-0.3.1 changes no schema, no route and no query, so `TBT_HOMEWORK_DB_VERSION`
-stays at `1` and there is nothing to migrate.
+0.4.0 adds one column, so `TBT_HOMEWORK_DB_VERSION` is `2`, and the upgrade
+check on `plugins_loaded` adds it after an FTP deploy without reactivating.
 
 ## Deployment
 
@@ -255,7 +319,7 @@ stays at `1` and there is nothing to migrate.
 tag is what makes a commit a release:
 
 ```
-git tag v0.3.1 && git push origin v0.3.1
+git tag v0.4.0 && git push origin v0.4.0
 ```
 
 An ordinary push to a branch deploys nothing. The manual trigger — Actions →
@@ -268,8 +332,9 @@ disagree it fails without deploying, so a tag can never quietly put the wrong
 version live.
 
 FTP sync copies files; it does not run WordPress activation. That only matters
-for a release that changes the schema — bump `TBT_HOMEWORK_DB_VERSION` and give
-it a migration path rather than relying on the activation hook.
+for a release that changes the schema, and since 0.4.0 there is a path for it:
+bump `TBT_HOMEWORK_DB_VERSION`, and `tbt_homework_maybe_upgrade()` runs the
+schema on the next request.
 
 For a hand install instead, zip the plugin folder without `tests/`, `docs/`,
 `.github/` and the `.md` files — the same exclusions the workflow uses — and
