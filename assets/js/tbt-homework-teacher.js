@@ -7,6 +7,11 @@
  * collapses a long submission, submits the bar when the dropdown changes, and
  * works the search box's ×.
  *
+ * The score beside "Save comment" travels in the same request as the comment
+ * and is checked by the same rules the server applies, so a bad one is
+ * refused before anything is sent — and refused again by the server if it
+ * gets through.
+ *
  * Saving is the load-bearing part. Without JavaScript the queue still reads
  * whole, the notes already saved still show their text on hover, the filter
  * still works through the bar's own button, the search box still types and
@@ -29,6 +34,8 @@
 	var I18N = DATA.i18n || {};
 	var MARKS = window.TBTHomeworkMarks || null;
 	var NOTE_MAX = parseInt(DATA.noteMax, 10) || 200;
+	var SCORE_MAX = parseInt(DATA.scoreMax, 10) || 10;
+	var SCORE_LIMIT = parseInt(DATA.scoreLimit, 10) || 100;
 
 	/** The popover's quote is shortened past this many characters. */
 	var QUOTE_MAX = 40;
@@ -147,6 +154,11 @@
 		this.button = item.querySelector('[data-tbth-save]');
 		this.status = item.querySelector('[data-tbth-status]');
 		this.error = item.querySelector('[data-tbth-error]');
+		this.scoreInput = item.querySelector('[data-tbth-score]');
+		this.maxInput = item.querySelector('[data-tbth-score-max]');
+		this.scoreError = item.querySelector('[data-tbth-score-error]');
+		this.savedScore = this.scoreInput ? this.scoreInput.value.trim() : '';
+		this.savedMax = this.maxInput ? this.maxInput.value.trim() : String(SCORE_MAX);
 		this.body = item.querySelector('[data-tbth-body]');
 		this.wrap = this.body ? this.body.parentNode : null;
 		this.meta = item.querySelector('[data-tbth-marks-meta]');
@@ -693,34 +705,99 @@
 		this.error.hidden = !message;
 	};
 
+	/** Show the score's one line, under the Save line, or none. */
+	Item.prototype.sayScore = function (message) {
+		if (!this.scoreError) {
+			return;
+		}
+
+		this.scoreError.textContent = text(message);
+		this.scoreError.hidden = !message;
+	};
+
 	/**
-	 * Save, replace or clear the comment.
+	 * The score as typed, checked by the server's rules.
+	 *
+	 * An empty score means none (the maximum is not looked at). Otherwise the
+	 * maximum is a whole number from 1 to 100, 10 when empty, and the score a
+	 * whole number from 0 to it. A field the browser could not read as a
+	 * number at all ("abc") reports an empty value, so badInput is checked
+	 * rather than letting it pass as a cleared score.
+	 *
+	 * @return {?Object} { score, max } as strings ('' when clearing), or null.
+	 */
+	Item.prototype.readScore = function () {
+		if (!this.scoreInput) {
+			return { score: '', max: '' };
+		}
+
+		if ((this.scoreInput.validity && this.scoreInput.validity.badInput) ||
+			(this.maxInput && this.maxInput.validity && this.maxInput.validity.badInput)) {
+			return null;
+		}
+
+		var score = this.scoreInput.value.trim();
+		var max = this.maxInput ? this.maxInput.value.trim() : '';
+
+		if (score === '') {
+			return { score: '', max: '' };
+		}
+
+		var whole = /^[0-9]{1,6}$/;
+		var maxNumber = max === '' ? SCORE_MAX : (whole.test(max) ? parseInt(max, 10) : -1);
+
+		if (maxNumber < 1 || maxNumber > SCORE_LIMIT || !whole.test(score) || parseInt(score, 10) > maxNumber) {
+			return null;
+		}
+
+		return { score: String(parseInt(score, 10)), max: String(maxNumber) };
+	};
+
+	/**
+	 * Save, replace or clear the comment, and the score with it.
 	 *
 	 * Clearing is a real state change — it hands the homework back to the
 	 * student to edit — so it is asked about in words before it happens.
+	 * Clearing the comment leaves the score alone; a score can also be saved
+	 * with no comment, and the homework stays waiting.
 	 */
 	Item.prototype.save = function () {
 		var card = this;
 		var value = this.box ? this.box.value : '';
 		var clearing = !value.trim();
+		var commented = this.item.getAttribute('data-status') === 'commented';
 
 		if (this.saving || !this.id) {
 			return;
 		}
 
-		if (clearing && this.item.getAttribute('data-status') === 'commented') {
+		var score = this.readScore();
+
+		if (!score) {
+			this.sayScore(I18N.badScore);
+			if (this.scoreInput) {
+				this.scoreInput.focus();
+			}
+			return;
+		}
+
+		var scoreChanged = score.score !== this.savedScore ||
+			(score.score !== '' && score.max !== this.savedMax);
+
+		// Nothing to clear and nothing to write.
+		if (clearing && !commented && !scoreChanged) {
+			return;
+		}
+
+		if (clearing && commented) {
 			if (!window.confirm(I18N.confirmClear)) {
 				return;
 			}
 		}
 
-		// Nothing to clear and nothing to write.
-		if (clearing && this.item.getAttribute('data-status') !== 'commented') {
-			return;
-		}
-
 		this.saving = true;
 		this.say('');
+		this.sayScore('');
 		this.item.classList.add('tbth-is-saving');
 
 		if (this.button) {
@@ -728,12 +805,23 @@
 			this.button.textContent = I18N.saving;
 		}
 
-		request(text(DATA.comment), { id: this.id, comment: value }).then(function (saved) {
+		request(text(DATA.comment), {
+			id: this.id,
+			comment: value,
+			score: score.score,
+			score_max: score.max
+		}).then(function (saved) {
 			card.saving = false;
 			card.done(saved);
 		}).catch(function (error) {
 			card.saving = false;
 			card.settle();
+
+			if (error.code === 'tbt_homework_bad_score') {
+				card.sayScore(error.message || I18N.badScore);
+				return;
+			}
+
 			// The text stays in the box: it is the only copy of it.
 			card.say(error.message || I18N.saveFailed);
 		});
@@ -776,11 +864,32 @@
 			this.box.value = text(saved.comment);
 		}
 
+		var scored = saved.score !== null && saved.score !== undefined &&
+			saved.score_max !== null && saved.score_max !== undefined;
+
+		this.savedScore = scored ? String(saved.score) : '';
+
+		if (this.scoreInput) {
+			this.scoreInput.value = this.savedScore;
+		}
+
+		// A cleared score leaves the maximum as the teacher left it.
+		if (scored) {
+			this.savedMax = String(saved.score_max);
+			if (this.maxInput) {
+				this.maxInput.value = this.savedMax;
+			}
+		} else if (this.maxInput) {
+			this.savedMax = this.maxInput.value.trim();
+		}
+
 		if (this.status) {
-			this.status.className = 'tbt-tag tbth-item__status tbth-item__status--' + now;
-			this.status.textContent = 'commented' === now
+			var label = 'commented' === now
 				? (saved.commented_at_display ? sprintf(I18N.commentedOn, saved.commented_at_display) : I18N.commented)
 				: I18N.waiting;
+
+			this.status.className = 'tbt-tag tbth-item__status tbth-item__status--' + now;
+			this.status.textContent = scored ? label + ' · ' + saved.score + ' / ' + saved.score_max : label;
 		}
 
 		if (was !== now) {
@@ -861,6 +970,25 @@
 					card.save();
 				});
 			}
+
+			// Enter in either score field saves, as the button does; typing
+			// again takes the score's error away.
+			[card.scoreInput, card.maxInput].forEach(function (input) {
+				if (!input) {
+					return;
+				}
+
+				input.addEventListener('keydown', function (event) {
+					if (event.key === 'Enter') {
+						event.preventDefault();
+						card.save();
+					}
+				});
+
+				input.addEventListener('input', function () {
+					card.sayScore('');
+				});
+			});
 
 			if (MARKS && card.body) {
 				MARKS.watch(card.body);

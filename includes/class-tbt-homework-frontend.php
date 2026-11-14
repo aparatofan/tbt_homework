@@ -97,6 +97,8 @@ class TBT_Homework_Frontend {
 			/* translators: %s: a date, such as 18 September. */
 			'updated'        => __( 'Updated %s', 'tbt-homework' ),
 			'commentEyebrow' => __( 'Your teacher’s comment', 'tbt-homework' ),
+			/* translators: %s: a score, such as 7 / 10. */
+			'score'          => __( 'Score: %s', 'tbt-homework' ),
 			'closed'         => __( 'Your teacher has commented, so this homework is closed for changes.', 'tbt-homework' ),
 			'closedMarks'    => __( 'Your teacher has started marking this homework, so it is closed for changes.', 'tbt-homework' ),
 		);

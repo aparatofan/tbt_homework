@@ -333,6 +333,16 @@
 			block.appendChild(make('p', 'tbth-comment__date', this.row.commented_at_display));
 		}
 
+		// Beside the date, in the same style, and only once scored.
+		if (this.row.score !== null && this.row.score !== undefined &&
+			this.row.score_max !== null && this.row.score_max !== undefined) {
+			block.appendChild(make(
+				'p',
+				'tbth-comment__date tbth-comment__score',
+				sprintf(I18N.score, this.row.score + ' / ' + this.row.score_max)
+			));
+		}
+
 		this.root.appendChild(block);
 		this.root.appendChild(make('p', 'tbth-closed', I18N.closed));
 	};

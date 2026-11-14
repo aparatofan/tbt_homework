@@ -8,14 +8,23 @@ transpiled: the files that ship are the files in the repo.
 
 ## TBT Notes is a contract, not a dependency to read
 
-Three published functions, live since TBT Notes 1.18.0, are the **only**
-permitted route to Notes data:
+Four published functions are the **only** permitted route to Notes data. The
+three readers have been live since TBT Notes 1.18.0; the fourth, published in
+TBT Notes 1.22.0, is the single write:
 
 ```
 tbt_notes_lesson_context( int $lesson_id, int $user_id = 0 ): ?array
 tbt_notes_class_ids_for_manager( int $user_id = 0 ): array
 tbt_notes_lessons_brief( array $lesson_ids, int $user_id = 0 ): array
+tbt_notes_record_activity( array $args ): int|WP_Error
 ```
+
+`tbt_notes_record_activity()` is used in one place only: reporting a
+homework's first score to TBT Results (`TBT_Homework_REST::report_score()`). It
+is checked with `function_exists()` at the point of use, its `user_id` is
+always the stored row's student and never anything from the browser, and
+neither its absence nor a `WP_Error` from it may fail a save. Notes keeps no
+duplicate guard, so `activity_id` on the row is what makes it once.
 
 Never query a Notes table. Never reference a `TBT_Notes_` class. Never
 re-derive who may see what from roles, capabilities or class membership — the

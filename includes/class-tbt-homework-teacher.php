@@ -571,13 +571,54 @@ class TBT_Homework_Teacher {
 
 		$html .= '<p class="tbth-error" data-tbth-error hidden role="alert"></p>';
 
-		$html .= '<div class="tbth-actions">';
+		$html .= '<div class="tbth-actions tbth-item__actions">';
+		$html .= self::score_fields( $entry );
 		$html .= '<button type="button" class="tbth-btn tbth-btn--primary" data-tbth-save>' .
 			esc_html__( 'Save comment', 'tbt-homework' ) . '</button>';
 		$html .= '</div>';
+		$html .= '<p class="tbth-error tbth-item__score-error" data-tbth-score-error hidden role="alert"></p>';
 		$html .= '</div>';
 
 		$html .= '</li>';
+
+		return $html;
+	}
+
+	/**
+	 * "Score [ 7 ] / [ 10 ]", on the line with "Save comment".
+	 *
+	 * The score is empty until the teacher gives one; the maximum is 10 until
+	 * they change it. The visible "Score" labels the first field, and the
+	 * second carries "Out of" for a screen reader, since the slash between
+	 * them is drawn, not read.
+	 *
+	 * @param array $entry One shaped entry.
+	 */
+	private static function score_fields( array $entry ): string {
+		$id     = (int) $entry['id'];
+		$scored = null !== ( $entry['score'] ?? null );
+
+		$html  = '<span class="tbth-score">';
+		$html .= sprintf(
+			'<label class="tbth-score__label" for="tbth-score-%1$d">%2$s</label>',
+			$id,
+			esc_html__( 'Score', 'tbt-homework' )
+		);
+		$html .= sprintf(
+			'<input type="number" id="tbth-score-%1$d" class="tbt-input tbth-score__input" data-tbth-score min="0" max="%2$d" step="1" inputmode="numeric" value="%3$s">',
+			$id,
+			TBT_Homework_REST::SCORE_MAX_LIMIT,
+			$scored ? (int) $entry['score'] : ''
+		);
+		$html .= '<span class="tbth-score__sep" aria-hidden="true">/</span>';
+		$html .= sprintf(
+			'<input type="number" id="tbth-score-max-%1$d" class="tbt-input tbth-score__input" data-tbth-score-max min="1" max="%2$d" step="1" inputmode="numeric" value="%3$d" aria-label="%4$s">',
+			$id,
+			TBT_Homework_REST::SCORE_MAX_LIMIT,
+			$scored ? (int) $entry['score_max'] : TBT_Homework_REST::SCORE_MAX_DEFAULT,
+			esc_attr__( 'Out of', 'tbt-homework' )
+		);
+		$html .= '</span>';
 
 		return $html;
 	}
@@ -592,24 +633,26 @@ class TBT_Homework_Teacher {
 	}
 
 	/**
-	 * "Waiting", or "Commented 18 September".
+	 * "Waiting", or "Commented 18 September", and " · 7 / 10" once scored.
 	 *
 	 * @param array $entry One shaped entry.
 	 */
 	private static function status_label( array $entry ): string {
 		if ( 'commented' !== $entry['status'] ) {
-			return __( 'Waiting', 'tbt-homework' );
+			$label = __( 'Waiting', 'tbt-homework' );
+		} elseif ( ! $entry['commented_at'] ) {
+			$label = __( 'Commented', 'tbt-homework' );
+		} else {
+			$label = sprintf(
+				/* translators: %s: a date, such as 18 September. */
+				__( 'Commented %s', 'tbt-homework' ),
+				TBT_Homework_REST::display_date( (string) $entry['commented_at'] )
+			);
 		}
 
-		if ( ! $entry['commented_at'] ) {
-			return __( 'Commented', 'tbt-homework' );
-		}
+		$score = TBT_Homework_REST::score_label( $entry );
 
-		return sprintf(
-			/* translators: %s: a date, such as 18 September. */
-			__( 'Commented %s', 'tbt-homework' ),
-			TBT_Homework_REST::display_date( (string) $entry['commented_at'] )
-		);
+		return '' === $score ? $label : $label . ' · ' . $score;
 	}
 
 	/**
@@ -913,6 +956,8 @@ class TBT_Homework_Teacher {
 				'noteMax'   => TBT_Homework_Marks::NOTE_MAX,
 				'nonce'     => wp_create_nonce( 'wp_rest' ),
 				'maxLength' => TBT_Homework_REST::COMMENT_MAX,
+				'scoreMax'   => TBT_Homework_REST::SCORE_MAX_DEFAULT,
+				'scoreLimit' => TBT_Homework_REST::SCORE_MAX_LIMIT,
 				'i18n'      => self::strings(),
 			)
 		);
@@ -956,6 +1001,7 @@ class TBT_Homework_Teacher {
 			'noteMany'     => __( '%s notes', 'tbt-homework' ),
 			'closedForChanges' => __( 'Closed for changes', 'tbt-homework' ),
 			'notesFailed'  => __( 'Your notes could not be saved. Please try again.', 'tbt-homework' ),
+			'badScore'     => __( 'The score must be a whole number between 0 and the maximum.', 'tbt-homework' ),
 		);
 	}
 
@@ -1195,6 +1241,7 @@ class TBT_Homework_Teacher {
 			$user_id   = (int) ( $row['user_id'] ?? 0 );
 			$named     = isset( $brief[ $lesson_id ] ) ? (array) $brief[ $lesson_id ] : array();
 			$comment   = isset( $row['comment'] ) && null !== $row['comment'] ? (string) $row['comment'] : null;
+			$score     = TBT_Homework_REST::score_of( $row );
 
 			$entries[] = array(
 				'id'           => (int) ( $row['id'] ?? 0 ),
@@ -1213,6 +1260,8 @@ class TBT_Homework_Teacher {
 				'status'       => TBT_Homework_Student::status_for( $row ),
 				'submitted_at' => (string) ( $row['submitted_at'] ?? '' ),
 				'commented_at' => empty( $row['commented_at'] ) ? null : (string) $row['commented_at'],
+				'score'        => $score['score'],
+				'score_max'    => $score['score_max'],
 			);
 		}
 

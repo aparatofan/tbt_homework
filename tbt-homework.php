@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       TBT Homework
  * Description:       Private homework handover between a student and their teacher, under a TBT Notes lesson.
- * Version:           0.4.0
+ * Version:           0.5.0
  * Requires PHP:      8.0
  * Author:            TBT
  * License:           GPL-2.0-or-later
@@ -14,8 +14,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'TBT_HOMEWORK_VERSION', '0.4.0' );
-define( 'TBT_HOMEWORK_DB_VERSION', '2' );
+define( 'TBT_HOMEWORK_VERSION', '0.5.0' );
+define( 'TBT_HOMEWORK_DB_VERSION', '3' );
 define( 'TBT_HOMEWORK_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TBT_HOMEWORK_URL', plugin_dir_url( __FILE__ ) );
 
@@ -44,7 +44,8 @@ register_activation_hook( __FILE__, 'tbt_homework_activate' );
  *
  * FTP sync copies files; it does not fire the activation hook. So when the
  * stored schema version is not this file's, the schema runs here. dbDelta adds
- * what is missing — the marks column, for version 2 — and touches no data.
+ * what is missing — the marks column for version 2, the score columns for
+ * version 3 — and touches no data.
  * Priority 5, so the table is right before anything on the bootstrap reads it.
  */
 function tbt_homework_maybe_upgrade(): void {

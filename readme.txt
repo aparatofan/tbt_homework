@@ -3,7 +3,7 @@ Contributors: tbt
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.4.0
+Stable tag: 0.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -79,6 +79,15 @@ checks the stored row's own class before writing anything.
 Deleting drops the table and its options. Deactivating keeps everything.
 
 == Changelog ==
+
+= 0.5.0 =
+* New: a score beside the teacher's comment — "Score [ ] / [10]", out of 10 by
+  default and any maximum from 1 to 100 per homework. Saved with the comment;
+  the student sees "Score: 7 / 10" under it. The queue's status tag shows it
+  too ("Commented 18 September · 7 / 10", "Waiting · 7 / 10").
+* The first time a homework is scored it is reported once to TBT Results
+  through TBT Notes 1.22.0. A later change to the score updates Homework only.
+* A score on its own does not change the status or close the homework.
 
 = 0.4.0 =
 * New: teacher notes on homework. On the queue, select a few words and write a
