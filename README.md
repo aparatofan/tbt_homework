@@ -3,12 +3,43 @@
 Private homework handover between a student and their teacher, under a TBT
 Notes lesson.
 
-**Version 0.4.0** — teacher notes on homework: a teacher selects a few words
-in a student's homework and writes a short correction, which appears above the
-line in red handwriting. The student sees the same marked-up homework,
-read-only.
+**Version 0.5.0** — a score when the teacher marks: "Score [ 7 ] / [ 10 ]"
+beside the comment, shown to the student with it, and reported once to TBT
+Results.
 
-## What 0.4.0 adds
+## What 0.5.0 adds
+
+Under "Your comment", on the line with "Save comment": `Score [ ] / [10]`. The
+maximum is 10 unless the teacher changes it, from 1 to 100, for that homework.
+"Save comment" — or Enter in either field — saves the comment and the score in
+one request and one write. An empty score clears it; a score that is not a
+whole number between 0 and the maximum is refused with "The score must be a
+whole number between 0 and the maximum." and nothing is saved.
+
+- The queue's status tag shows it: "Commented 18 September · 7 / 10", or
+  "Waiting · 7 / 10" for a score with no comment yet.
+- The student sees "Score: 7 / 10" under the date of the teacher's comment, on
+  My Homework and under the lesson. A score with no comment is not shown to the
+  student until there is a comment to show it with.
+- A score on its own changes nothing else: status follows the comment, and the
+  student's write gate follows the comment and the notes, as before. Clearing
+  the comment keeps the score. A request that does not mention the score at all
+  leaves it as it is.
+- The **first** time a homework has a score, it is reported to the activity log
+  in TBT Notes with `tbt_notes_record_activity()` (Notes 1.22.0), tool
+  `homework`, `object_ref` the lesson id, so it appears in TBT Results as
+  "7 / 10 · 70%". The id Notes returns is kept in `activity_id`, which is what
+  stops a second report. A later change or removal of the score changes
+  Homework's own row only — Results keeps the first. With Notes older than
+  1.22.0, or refusing, nothing is reported and nothing fails; the next scored
+  save tries again. Two saves landing at the same instant could both report;
+  that is a known limit.
+
+`TBT_HOMEWORK_DB_VERSION` is `3`: `score` and `score_max` (`smallint unsigned
+NULL`, NULL meaning not scored, 0 a real score) and `activity_id` (`bigint
+unsigned NULL`).
+
+## What 0.4.0 added
 
 On the queue, select a few words in a submission. A small popover opens under
 them: write the correction, press Enter, and the words get a pale red highlight
@@ -146,7 +177,8 @@ Nothing is public at any point.
 | 0.2.0 | `[tbt_homework_student]` — the student's dossier page |
 | 0.3.0 | `[tbt_homework_teacher]` — the teacher's queue, filters, the count |
 | 0.3.1 | The bar's real widths, its search field, and the cards' spine |
-| **0.4.0** | Teacher notes on homework |
+| 0.4.0 | Teacher notes on homework |
+| **0.5.0** | A score beside the comment, reported to TBT Results |
 | later | Audio recording |
 
 ## Requirements
@@ -160,7 +192,7 @@ submitted row survives to reappear when Notes comes back.
 
 ## How it hangs off TBT Notes
 
-Three published functions, one DOM slot, one event, one action hook — nothing
+Four published functions, one DOM slot, one event, one action hook — nothing
 else. No Notes table is queried and no Notes class is referenced.
 
 - `tbt_notes_lesson_context()` supplies the lesson, its class, and the
@@ -174,6 +206,10 @@ else. No Notes table is queried and no Notes class is referenced.
 - `tbt_notes_class_ids_for_manager()` returns the classes you teach, every class
   for an administrator, and an empty array for everyone else — which is the
   whole of "not a teacher". It is the only thing that bounds the queue.
+- `tbt_notes_record_activity()` (Notes 1.22.0) is the single write: a
+  homework's first score, reported once to TBT Results. It is checked with
+  `function_exists()` where it is called, and its absence or its `WP_Error`
+  never fails a save.
 - `<div class="tbt-notes-slot" data-tbt-slot="lesson-foot">` is where the card
   mounts.
 - `tbt-notes:lesson-view` on `document` says a slot has just been rendered.
@@ -191,7 +227,8 @@ callbacks.
 GET  /submission?lesson_id=412       → the caller's row for that lesson, or null
 POST /submission { lesson_id, body } → create or update the caller's row
 GET  /queue?status=&search=&page=    → the caller's students' work, newest first
-POST /comment { id, comment }        → write, replace or clear one comment
+POST /comment { id, comment, score?, score_max? }
+                                     → write, replace or clear one comment and its score
 POST /marks { id, marks, hash }      → replace every note on one submission
 ```
 
@@ -205,8 +242,11 @@ a note — the message says which.
 POST `/comment` fails in the same style: `503` when Notes is missing, `404` for
 an id that is not a positive integer or names no row, `403
 tbt_homework_not_your_class` when the row's own `class_id` is not one the caller
-manages, `400` over 20,000 characters. An empty comment is not a failure — it
-clears the comment and its date, and the student can edit again. `GET /queue`
+manages, `400` over 20,000 characters, `400 tbt_homework_bad_score` for a score
+that is not a whole number from 0 to `score_max` or a `score_max` outside 1–100.
+An empty comment is not a failure — it clears the comment and its date, and the
+student can edit again; it leaves the score alone. Neither score field sent
+keeps the score, an empty `score` clears it, and `score` alone is out of 10. `GET /queue`
 answers `403 tbt_homework_not_a_teacher` to anyone who manages no classes.
 
 POST `/marks` takes the whole list every time; an empty list clears it. It
@@ -310,8 +350,8 @@ node --check assets/js/tbt-homework-marks.js
 php tests/test-logic.php
 ```
 
-0.4.0 adds one column, so `TBT_HOMEWORK_DB_VERSION` is `2`, and the upgrade
-check on `plugins_loaded` adds it after an FTP deploy without reactivating.
+0.5.0 adds three columns, so `TBT_HOMEWORK_DB_VERSION` is `3`, and the upgrade
+check on `plugins_loaded` adds them after an FTP deploy without reactivating.
 
 ## Deployment
 
@@ -319,7 +359,7 @@ check on `plugins_loaded` adds it after an FTP deploy without reactivating.
 tag is what makes a commit a release:
 
 ```
-git tag v0.4.0 && git push origin v0.4.0
+git tag v0.5.0 && git push origin v0.5.0
 ```
 
 An ordinary push to a branch deploys nothing. The manual trigger — Actions →

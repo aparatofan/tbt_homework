@@ -35,6 +35,16 @@ class TBT_Homework_REST {
 	const COMMENT_MAX = 20000;
 
 	/**
+	 * The maximum a score is out of when the teacher does not say.
+	 */
+	const SCORE_MAX_DEFAULT = 10;
+
+	/**
+	 * The largest maximum a teacher may set.
+	 */
+	const SCORE_MAX_LIMIT = 100;
+
+	/**
 	 * Register the routes.
 	 */
 	public static function init(): void {
@@ -248,7 +258,7 @@ class TBT_Homework_REST {
 	}
 
 	/**
-	 * POST /comment { id, comment }
+	 * POST /comment { id, comment, score?, score_max? }
 	 *
 	 * Validation, first failure wins, in the order the spec sets out. Step 3
 	 * is the one that matters: the row's own class_id is tested against the
@@ -305,9 +315,35 @@ class TBT_Homework_REST {
 			);
 		}
 
-		// 6. Write. Clearing sets both the comment and its date to NULL, which
-		// returns the row to waiting and lets the student edit again.
-		$saved = TBT_Homework_DB::save_comment( (int) $row['id'], 'clear' === $verdict ? null : $comment );
+		// 6. The score. A request that mentions neither field leaves it as it
+		// is; an empty score clears it; anything else must be a whole number
+		// between 0 and a maximum of 1 to 100. A bad score saves nothing at
+		// all, the comment included.
+		$score = self::check_score(
+			$request->has_param( 'score' ) || $request->has_param( 'score_max' ),
+			$request->get_param( 'score' ),
+			$request->get_param( 'score_max' )
+		);
+
+		if ( 'invalid' === $score['verdict'] ) {
+			return new WP_Error(
+				'tbt_homework_bad_score',
+				__( 'The score must be a whole number between 0 and the maximum.', 'tbt-homework' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		// 7. Write, in one UPDATE. Clearing the comment sets it and its date to
+		// NULL, which returns the row to waiting and lets the student edit
+		// again; it does not clear the score.
+		$saved = TBT_Homework_DB::save_comment(
+			(int) $row['id'],
+			'clear' === $verdict ? null : $comment,
+			'keep' === $score['verdict'] ? null : array(
+				'score'     => $score['score'],
+				'score_max' => $score['score_max'],
+			)
+		);
 
 		if ( null === $saved ) {
 			return new WP_Error(
@@ -317,7 +353,61 @@ class TBT_Homework_REST {
 			);
 		}
 
+		// 8. The first score goes to TBT Results, once. Nothing about Notes
+		// can fail the save: it has already happened.
+		self::report_score( $saved );
+
 		return rest_ensure_response( self::present_saved_comment( $saved ) );
+	}
+
+	/**
+	 * Report a homework's first score to the activity log in TBT Notes.
+	 *
+	 * Only when the row now has a score and has never been reported. The
+	 * student is the row's own user_id — never anything from the browser —
+	 * and object_ref is the lesson, because TBT Results groups "who did this
+	 * homework" by lesson.
+	 *
+	 * Notes may be inactive or older than 1.22.0, and record_activity() may
+	 * refuse: in every one of those cases nothing happens, the row keeps a
+	 * NULL activity_id, and the next scored save tries again. A later change
+	 * or removal of the score is Homework's alone; Results keeps the first.
+	 *
+	 * @param array $row The stored row, after the save.
+	 */
+	private static function report_score( array $row ): void {
+		if ( ! self::should_report( $row ) || ! function_exists( 'tbt_notes_record_activity' ) ) {
+			return;
+		}
+
+		$lesson_id = (int) $row['lesson_id'];
+		$title     = '';
+
+		if ( function_exists( 'tbt_notes_lesson_context' ) ) {
+			$context = tbt_notes_lesson_context( $lesson_id );
+			$title   = is_array( $context ) ? (string) ( $context['lesson_title'] ?? '' ) : '';
+		}
+
+		$score = self::score_of( $row );
+
+		try {
+			$id = tbt_notes_record_activity(
+				array(
+					'user_id'      => (int) $row['user_id'],
+					'tool'         => 'homework',
+					'object_ref'   => (string) $lesson_id,
+					'object_title' => $title,
+					'score'        => $score['score'],
+					'score_max'    => $score['score_max'],
+				)
+			);
+		} catch ( \Throwable $e ) {
+			return;
+		}
+
+		if ( is_int( $id ) && $id > 0 ) {
+			TBT_Homework_DB::save_activity_id( (int) $row['id'], $id );
+		}
 	}
 
 	/**
@@ -513,6 +603,8 @@ class TBT_Homework_REST {
 			'comment_html'         => null === $comment ? null : nl2br( esc_html( $comment ) ),
 			'commented_at'         => $entry['commented_at'],
 			'commented_at_display' => null === $entry['commented_at'] ? null : self::display_date( (string) $entry['commented_at'] ),
+			'score'                => $entry['score'] ?? null,
+			'score_max'            => $entry['score_max'] ?? null,
 		);
 	}
 
@@ -526,6 +618,7 @@ class TBT_Homework_REST {
 	 */
 	private static function present_saved_comment( array $row ): array {
 		$comment = isset( $row['comment'] ) && null !== $row['comment'] ? (string) $row['comment'] : null;
+		$score   = self::score_of( $row );
 
 		return array(
 			'id'                   => (int) $row['id'],
@@ -535,6 +628,8 @@ class TBT_Homework_REST {
 			'commented_at'         => empty( $row['commented_at'] ) ? null : (string) $row['commented_at'],
 			'commented_at_display' => empty( $row['commented_at'] ) ? null : self::display_date( (string) $row['commented_at'] ),
 			'updated_at'           => (string) $row['updated_at'],
+			'score'                => $score['score'],
+			'score_max'            => $score['score_max'],
 		);
 	}
 
@@ -617,6 +712,7 @@ class TBT_Homework_REST {
 
 		$body    = (string) $row['body'];
 		$comment = isset( $row['comment'] ) && null !== $row['comment'] ? (string) $row['comment'] : null;
+		$score   = self::score_of( $row );
 
 		return array(
 			'lesson_id'             => (int) $row['lesson_id'],
@@ -631,6 +727,8 @@ class TBT_Homework_REST {
 			'comment_html'          => null === $comment ? null : nl2br( esc_html( $comment ) ),
 			'commented_at'          => empty( $row['commented_at'] ) ? null : (string) $row['commented_at'],
 			'commented_at_display'  => empty( $row['commented_at'] ) ? null : self::display_date( (string) $row['commented_at'] ),
+			'score'                 => $score['score'],
+			'score_max'             => $score['score_max'],
 			'marks'                 => TBT_Homework_Marks::decode( $row['marks'] ?? null ),
 			'closed'                => self::is_closed( $row ),
 			'closed_reason'         => self::closed_reason( $row ),
@@ -797,6 +895,142 @@ class TBT_Homework_REST {
 		}
 
 		return 'ok';
+	}
+
+	/**
+	 * The score rules, for a /comment request.
+	 *
+	 * - Neither field sent: 'keep' — the stored score is left alone, so an
+	 *   older page that knows nothing of scores cannot wipe one.
+	 * - The score empty (missing, null or blank): 'clear', both NULL. The
+	 *   maximum is not looked at, because the form always carries one — 10
+	 *   unless the teacher changed it — and on its own it is not a score.
+	 * - Otherwise 'ok': score_max a whole number from 1 to 100, 10 when it is
+	 *   empty, and the score a whole number from 0 to score_max.
+	 * - Anything else: 'invalid', and nothing is saved.
+	 *
+	 * @param bool  $sent      Whether the request carried either field at all.
+	 * @param mixed $raw_score The score as it arrived.
+	 * @param mixed $raw_max   The maximum as it arrived.
+	 *
+	 * @return array{verdict:string, score:?int, score_max:?int}
+	 */
+	public static function check_score( bool $sent, $raw_score, $raw_max ): array {
+		$none = array(
+			'score'     => null,
+			'score_max' => null,
+		);
+
+		if ( ! $sent ) {
+			return array( 'verdict' => 'keep' ) + $none;
+		}
+
+		if ( self::is_blank( $raw_score ) ) {
+			return array( 'verdict' => 'clear' ) + $none;
+		}
+
+		$max = self::is_blank( $raw_max ) ? self::SCORE_MAX_DEFAULT : self::whole_number( $raw_max );
+		if ( null === $max || $max < 1 || $max > self::SCORE_MAX_LIMIT ) {
+			return array( 'verdict' => 'invalid' ) + $none;
+		}
+
+		$score = self::whole_number( $raw_score );
+		if ( null === $score || $score < 0 || $score > $max ) {
+			return array( 'verdict' => 'invalid' ) + $none;
+		}
+
+		return array(
+			'verdict'   => 'ok',
+			'score'     => $score,
+			'score_max' => $max,
+		);
+	}
+
+	/**
+	 * Missing, null, or a string of nothing but spaces.
+	 *
+	 * @param mixed $raw The value as it arrived.
+	 */
+	public static function is_blank( $raw ): bool {
+		return null === $raw || ( is_string( $raw ) && '' === trim( $raw ) );
+	}
+
+	/**
+	 * A non-negative whole number, or null.
+	 *
+	 * An int, a float with nothing after the point, or a string of up to six
+	 * digits. A sign, a decimal point in a string, "7abc", a bool or an array
+	 * is not one. Negative numbers come back as they are, for the caller's
+	 * range check to refuse.
+	 *
+	 * @param mixed $raw The value as it arrived.
+	 */
+	public static function whole_number( $raw ): ?int {
+		if ( is_int( $raw ) ) {
+			return $raw;
+		}
+
+		if ( is_float( $raw ) ) {
+			return is_finite( $raw ) && floor( $raw ) === $raw && abs( $raw ) < 1000000 ? (int) $raw : null;
+		}
+
+		if ( is_string( $raw ) ) {
+			$trimmed = trim( $raw );
+
+			return preg_match( '/^[0-9]{1,6}$/', $trimmed ) ? (int) $trimmed : null;
+		}
+
+		return null;
+	}
+
+	/**
+	 * A row's score as two ints, or two nulls when it is not scored.
+	 *
+	 * Half a score — one column set, the other NULL — is no score.
+	 *
+	 * @param array|null $row A row from the table.
+	 *
+	 * @return array{score:?int, score_max:?int}
+	 */
+	public static function score_of( ?array $row ): array {
+		$score = is_array( $row ) ? ( $row['score'] ?? null ) : null;
+		$max   = is_array( $row ) ? ( $row['score_max'] ?? null ) : null;
+
+		if ( null === $score || null === $max || '' === $score || '' === $max ) {
+			return array(
+				'score'     => null,
+				'score_max' => null,
+			);
+		}
+
+		return array(
+			'score'     => (int) $score,
+			'score_max' => (int) $max,
+		);
+	}
+
+	/**
+	 * "7 / 10", or '' when the row is not scored.
+	 *
+	 * @param array|null $row A row or a shaped entry carrying score and score_max.
+	 */
+	public static function score_label( ?array $row ): string {
+		$score = self::score_of( $row );
+
+		return null === $score['score'] ? '' : $score['score'] . ' / ' . $score['score_max'];
+	}
+
+	/**
+	 * Should this row be reported to TBT Results now?
+	 *
+	 * When it has a score and has never been reported. Reported once is
+	 * reported for good: changing or clearing the score later does not
+	 * report again.
+	 *
+	 * @param array|null $row The stored row, after the save.
+	 */
+	public static function should_report( ?array $row ): bool {
+		return null !== self::score_of( $row )['score'] && empty( $row['activity_id'] );
 	}
 
 	/**

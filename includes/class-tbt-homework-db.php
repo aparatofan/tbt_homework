@@ -33,6 +33,9 @@ class TBT_Homework_DB {
 	 * longtext cannot carry a DEFAULT in MySQL, and NULL is what "nobody has
 	 * commented yet" means anyway. `marks` is nullable for the same reason:
 	 * NULL and '[]' both mean "no notes", and existing rows need no backfill.
+	 * `score` and `score_max` are NULL until the teacher scores the homework;
+	 * 0 is a real score. `activity_id` is the TBT Notes activity row the first
+	 * score was reported as, and NULL until it has been reported.
 	 */
 	public static function install(): void {
 		global $wpdb;
@@ -52,6 +55,9 @@ class TBT_Homework_DB {
 			comment longtext NULL,
 			commented_at datetime NULL,
 			marks longtext NULL,
+			score smallint(5) unsigned NULL,
+			score_max smallint(5) unsigned NULL,
+			activity_id bigint(20) unsigned NULL,
 			submitted_at datetime NOT NULL,
 			updated_at datetime NOT NULL,
 			PRIMARY KEY  (id),
@@ -384,58 +390,99 @@ class TBT_Homework_DB {
 	}
 
 	/**
-	 * Write, replace or clear one comment.
+	 * Write, replace or clear one comment, and the score with it.
 	 *
 	 * commented_at is set on the first comment only — COALESCE keeps the
 	 * original, so commenting twice replaces the text and leaves the date
 	 * alone. updated_at is always touched. Passing null clears both, which
 	 * returns the row to waiting and lets the student edit again.
 	 *
+	 * The score is written in the same UPDATE. Null leaves it as it is — a
+	 * request that did not mention it, or a cleared comment, never touches
+	 * it. Otherwise it is array( 'score' => ?int, 'score_max' => ?int ), both
+	 * null to clear it. activity_id is never touched here: once a score has
+	 * been reported, it stays reported.
+	 *
 	 * The caller has already checked that this row's class is one the caller
-	 * manages; this method takes the id it is given.
+	 * manages, and has validated the score; this method takes what it is given.
 	 *
 	 * @param int         $id      The submission id.
 	 * @param string|null $comment Sanitised plain text, or null to clear.
+	 * @param array|null  $score   The checked score, or null to keep it.
 	 *
 	 * @return array|null The stored row, or null if the write failed.
 	 */
-	public static function save_comment( int $id, ?string $comment ): ?array {
+	public static function save_comment( int $id, ?string $comment, ?array $score = null ): ?array {
 		global $wpdb;
 
 		$table = self::table();
 		$now   = current_time( 'mysql', true );
 
 		if ( null === $comment ) {
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
-			$result = $wpdb->query(
-				$wpdb->prepare(
-					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-					"UPDATE `{$table}` SET comment = NULL, commented_at = NULL, updated_at = %s WHERE id = %d",
-					$now,
-					$id
-				)
-			);
+			$sets = array( 'comment = NULL', 'commented_at = NULL' );
+			$args = array();
 		} else {
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
-			$result = $wpdb->query(
-				$wpdb->prepare(
-					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-					"UPDATE `{$table}`
-					SET comment = %s, commented_at = COALESCE( commented_at, %s ), updated_at = %s
-					WHERE id = %d",
-					$comment,
-					$now,
-					$now,
-					$id
-				)
-			);
+			$sets = array( 'comment = %s', 'commented_at = COALESCE( commented_at, %s )' );
+			$args = array( $comment, $now );
 		}
+
+		if ( null !== $score ) {
+			if ( null === $score['score'] || null === $score['score_max'] ) {
+				$sets[] = 'score = NULL';
+				$sets[] = 'score_max = NULL';
+			} else {
+				$sets[] = 'score = %d';
+				$sets[] = 'score_max = %d';
+				$args[] = (int) $score['score'];
+				$args[] = (int) $score['score_max'];
+			}
+		}
+
+		$sets[] = 'updated_at = %s';
+		$args[] = $now;
+		$args[] = $id;
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"UPDATE `{$table}` SET " . implode( ', ', $sets ) . ' WHERE id = %d',
+				$args
+			)
+		);
 
 		if ( false === $result ) {
 			return null;
 		}
 
 		return self::get_row( $id );
+	}
+
+	/**
+	 * Remember which TBT Notes activity row the first score became.
+	 *
+	 * Only fills an empty activity_id, so a row is never re-pointed at a
+	 * second report.
+	 *
+	 * @param int $id          The submission id.
+	 * @param int $activity_id The id tbt_notes_record_activity() returned.
+	 */
+	public static function save_activity_id( int $id, int $activity_id ): bool {
+		global $wpdb;
+
+		$table = self::table();
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"UPDATE `{$table}` SET activity_id = %d WHERE id = %d AND activity_id IS NULL",
+				$activity_id,
+				$id
+			)
+		);
+
+		return false !== $result;
 	}
 
 	/**

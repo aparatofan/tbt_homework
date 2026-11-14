@@ -645,6 +645,95 @@ tbth_assert(
 	"the queue carries no marks as an empty list"
 );
 
+echo "\nthe score: whole numbers, 0 to the maximum, out of 10 by default\n";
+
+/**
+ * Shorthand for a /comment request that carried the score fields.
+ *
+ * @param mixed $score The score as sent.
+ * @param mixed $max   The maximum as sent.
+ */
+function tbth_score( $score, $max ): array {
+	return TBT_Homework_REST::check_score( true, $score, $max );
+}
+
+$tbth_clear = array( 'verdict' => 'clear', 'score' => null, 'score_max' => null );
+$tbth_bad   = array( 'verdict' => 'invalid', 'score' => null, 'score_max' => null );
+
+tbth_assert( array( 'verdict' => 'keep', 'score' => null, 'score_max' => null ), TBT_Homework_REST::check_score( false, null, null ), 'neither field sent: the score is kept' );
+tbth_assert( $tbth_clear, tbth_score( '', '' ), 'empty and empty: cleared' );
+tbth_assert( $tbth_clear, tbth_score( null, null ), 'null and null: cleared' );
+tbth_assert( $tbth_clear, tbth_score( '  ', '10' ), "an empty score clears, whatever the form's maximum says" );
+tbth_assert( $tbth_clear, tbth_score( '', '0' ), 'and the maximum is not judged when there is no score' );
+tbth_assert( array( 'verdict' => 'ok', 'score' => 7, 'score_max' => 10 ), tbth_score( '7', '' ), 'score only: out of 10' );
+tbth_assert( array( 'verdict' => 'ok', 'score' => 7, 'score_max' => 10 ), tbth_score( 7, null ), 'score only, as a number: out of 10' );
+tbth_assert( array( 'verdict' => 'ok', 'score' => 0, 'score_max' => 10 ), tbth_score( '0', '10' ), '0 is a real score' );
+tbth_assert( array( 'verdict' => 'ok', 'score' => 0, 'score_max' => 10 ), tbth_score( 0, 10 ), '0 as a number too' );
+tbth_assert( array( 'verdict' => 'ok', 'score' => 11, 'score_max' => 13 ), tbth_score( '11', '13' ), '11 out of 13' );
+tbth_assert( array( 'verdict' => 'ok', 'score' => 10, 'score_max' => 10 ), tbth_score( '10', '10' ), 'full marks' );
+tbth_assert( array( 'verdict' => 'ok', 'score' => 100, 'score_max' => 100 ), tbth_score( 100, 100 ), 'a maximum of 100 is allowed' );
+tbth_assert( array( 'verdict' => 'ok', 'score' => 1, 'score_max' => 1 ), tbth_score( '1', '1' ), 'a maximum of 1 is allowed' );
+tbth_assert( array( 'verdict' => 'ok', 'score' => 7, 'score_max' => 10 ), tbth_score( ' 7 ', ' 10 ' ), 'spaces around are trimmed' );
+tbth_assert( array( 'verdict' => 'ok', 'score' => 7, 'score_max' => 10 ), tbth_score( 7.0, 10.0 ), 'a whole float is a whole number' );
+tbth_assert( $tbth_bad, tbth_score( '12', '10' ), 'above the maximum: refused' );
+tbth_assert( $tbth_bad, tbth_score( '11', '' ), 'above the default 10: refused' );
+tbth_assert( $tbth_bad, tbth_score( '-1', '10' ), 'negative, as text: refused' );
+tbth_assert( $tbth_bad, tbth_score( -1, 10 ), 'negative, as a number: refused' );
+tbth_assert( $tbth_bad, tbth_score( '7.5', '10' ), 'not a whole number, as text: refused' );
+tbth_assert( $tbth_bad, tbth_score( 7.5, 10 ), 'not a whole number, as a number: refused' );
+tbth_assert( $tbth_bad, tbth_score( '7,5', '10' ), 'a decimal comma: refused' );
+tbth_assert( $tbth_bad, tbth_score( '7abc', '10' ), 'trailing letters: refused' );
+tbth_assert( $tbth_bad, tbth_score( '+7', '10' ), 'a sign: refused' );
+tbth_assert( $tbth_bad, tbth_score( true, '10' ), 'a bool: refused' );
+tbth_assert( $tbth_bad, tbth_score( array( 7 ), '10' ), 'an array: refused' );
+tbth_assert( $tbth_bad, tbth_score( '0', '0' ), 'a maximum of 0: refused' );
+tbth_assert( $tbth_bad, tbth_score( '7', '101' ), 'a maximum of 101: refused' );
+tbth_assert( $tbth_bad, tbth_score( '7', '-10' ), 'a negative maximum: refused' );
+tbth_assert( $tbth_bad, tbth_score( '7', '10.5' ), 'a fractional maximum: refused' );
+tbth_assert( $tbth_bad, tbth_score( '7', 'ten' ), 'a maximum in words: refused' );
+tbth_assert( $tbth_bad, tbth_score( '99999999999999999999', '10' ), 'a huge number: refused, not overflowed' );
+
+echo "\na row's score, and when it goes to TBT Results\n";
+
+tbth_assert( array( 'score' => 7, 'score_max' => 10 ), TBT_Homework_REST::score_of( array( 'score' => '7', 'score_max' => '10' ) ), 'database strings come back as ints' );
+tbth_assert( array( 'score' => 0, 'score_max' => 10 ), TBT_Homework_REST::score_of( array( 'score' => '0', 'score_max' => '10' ) ), '0 is a score, not an absence' );
+tbth_assert( array( 'score' => null, 'score_max' => null ), TBT_Homework_REST::score_of( array( 'score' => null, 'score_max' => null ) ), 'NULL is not scored' );
+tbth_assert( array( 'score' => null, 'score_max' => null ), TBT_Homework_REST::score_of( array( 'score' => '7', 'score_max' => null ) ), 'half a score is no score' );
+tbth_assert( array( 'score' => null, 'score_max' => null ), TBT_Homework_REST::score_of( array( 'comment' => 'x' ) ), 'a row from before 0.5.0 is not scored' );
+tbth_assert( array( 'score' => null, 'score_max' => null ), TBT_Homework_REST::score_of( null ), 'no row is not scored' );
+tbth_assert( '7 / 10', TBT_Homework_REST::score_label( array( 'score' => 7, 'score_max' => 10 ) ), 'the label' );
+tbth_assert( '0 / 13', TBT_Homework_REST::score_label( array( 'score' => '0', 'score_max' => '13' ) ), 'the label for 0' );
+tbth_assert( '', TBT_Homework_REST::score_label( array( 'score' => null, 'score_max' => null ) ), 'no label when not scored' );
+
+tbth_assert( true, TBT_Homework_REST::should_report( array( 'score' => '7', 'score_max' => '10', 'activity_id' => null ) ), 'scored and never reported: report' );
+tbth_assert( true, TBT_Homework_REST::should_report( array( 'score' => '0', 'score_max' => '10', 'activity_id' => null ) ), 'a score of 0 is reported too' );
+tbth_assert( false, TBT_Homework_REST::should_report( array( 'score' => '8', 'score_max' => '10', 'activity_id' => '55' ) ), 'already reported: never again' );
+tbth_assert( false, TBT_Homework_REST::should_report( array( 'score' => null, 'score_max' => null, 'activity_id' => null ) ), 'not scored: nothing to report' );
+tbth_assert( false, TBT_Homework_REST::should_report( array( 'score' => null, 'score_max' => null, 'activity_id' => '55' ) ), 'cleared after reporting: nothing to report' );
+
+echo "\na score changes neither status nor the student's write gate\n";
+
+$tbth_scored = array( 'comment' => null, 'marks' => null, 'score' => '7', 'score_max' => '10' );
+tbth_assert( 'waiting', TBT_Homework_Student::status_for( $tbth_scored ), 'a score with no comment is still waiting' );
+tbth_assert( false, TBT_Homework_REST::is_closed( $tbth_scored ), 'and still open for the student' );
+
+$tbth_queue_scored = TBT_Homework_Teacher::attach(
+	array(
+		array( 'id' => 1, 'body' => 'x', 'score' => '7', 'score_max' => '10' ),
+		array( 'id' => 2, 'body' => 'y' ),
+	),
+	array(),
+	array()
+);
+tbth_assert( array( 7, 10 ), array( $tbth_queue_scored[0]['score'], $tbth_queue_scored[0]['score_max'] ), 'the queue carries the score' );
+tbth_assert( array( null, null ), array( $tbth_queue_scored[1]['score'], $tbth_queue_scored[1]['score_max'] ), 'and nulls when there is none' );
+
+$tbth_library_scored = TBT_Homework_Student::attach_brief(
+	array( array( 'lesson_id' => 412, 'body' => 'x', 'comment' => 'Good', 'score' => '0', 'score_max' => '13' ) ),
+	array( 412 => array( 'lesson_title' => 'Past simple' ) )
+);
+tbth_assert( array( 0, 13 ), array( $tbth_library_scored[0]['score'], $tbth_library_scored[0]['score_max'] ), "the student's library carries the score" );
+
 echo "\n";
 
 if ( $tests_failed > 0 ) {

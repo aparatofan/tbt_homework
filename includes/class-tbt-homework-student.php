@@ -297,6 +297,17 @@ class TBT_Homework_Student {
 					esc_html( TBT_Homework_REST::display_date( $entry['commented_at'] ) ) . '</p>';
 			}
 
+			$score = TBT_Homework_REST::score_label( $entry );
+			if ( '' !== $score ) {
+				$html .= '<p class="tbth-comment__date tbth-comment__score">' . esc_html(
+					sprintf(
+						/* translators: %s: a score, such as 7 / 10. */
+						__( 'Score: %s', 'tbt-homework' ),
+						$score
+					)
+				) . '</p>';
+			}
+
 			$html .= '</div>';
 		}
 
@@ -416,6 +427,7 @@ class TBT_Homework_Student {
 
 			$named   = (array) $brief[ $lesson_id ];
 			$comment = isset( $row['comment'] ) && null !== $row['comment'] ? (string) $row['comment'] : null;
+			$score   = TBT_Homework_REST::score_of( $row );
 
 			$entries[] = array(
 				'lesson_id'    => $lesson_id,
@@ -428,6 +440,8 @@ class TBT_Homework_Student {
 				'status'       => self::status_for( $row ),
 				'submitted_at' => (string) ( $row['submitted_at'] ?? '' ),
 				'commented_at' => empty( $row['commented_at'] ) ? null : (string) $row['commented_at'],
+				'score'        => $score['score'],
+				'score_max'    => $score['score_max'],
 			);
 		}
 

@@ -171,6 +171,37 @@
 	margin: 12px 0 0;
 }
 
+/* The score sits on the Save line, before the button: Score [ 7 ] / [ 10 ]. */
+.tbth-item__actions {
+	align-items: center;
+}
+
+.tbth-score {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-size: 14px;
+	line-height: 1.5;
+	color: var(--tbt-text, #101828);
+}
+
+.tbth-score__label {
+	font-weight: 600;
+}
+
+.tbth-score__sep {
+	color: var(--tbt-text-muted, #667085);
+}
+
+/* .tbt-input draws the field and sets its own width, so the width is pinned
+   one class deeper than the primitive. */
+.tbth-teacher .tbth-score__input {
+	width: 72px;
+	min-width: 0;
+	text-align: center;
+}
+
 /* --------------------------------------------------------------------------
    The pager — plain older and newer links
    -------------------------------------------------------------------------- */
